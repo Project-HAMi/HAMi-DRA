@@ -1,0 +1,28 @@
+# This file shows how to use cert-manager to generate certificates for the webhook
+# Prerequisites: cert-manager must be installed in your cluster
+# Install cert-manager: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: webhook-selfsigned-issuer
+  namespace: default
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: webhook-cert
+  namespace: default
+spec:
+  secretName: webhook-cert
+  issuerRef:
+    name: webhook-selfsigned-issuer
+    kind: Issuer
+  dnsNames:
+    - webhook.default.svc
+    - webhook.default.svc.cluster.local
+  commonName: webhook.default.svc
+

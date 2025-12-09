@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook
+  namespace: default
+  labels:
+    app: webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook
+  template:
+    metadata:
+      labels:
+        app: webhook
+    spec:
+      serviceAccountName: webhook
+      containers:
+        - name: webhook
+          image: webhook:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /webhook
+            - --kubeconfig=/etc/kubeconfig
+            - --bind-address=0.0.0.0
+            - --secure-port=8443
+            - --cert-dir=/var/serving-cert
+            - --metrics-bind-address=:8080
+            - --health-probe-bind-address=:8000
+          ports:
+            - containerPort: 8443
+              name: webhook
+              protocol: TCP
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            - containerPort: 8000
+              name: health
+              protocol: TCP
+          volumeMounts:
+            - name: cert
+              mountPath: /var/serving-cert
+              readOnly: true
+            - name: kubeconfig
+              mountPath: /etc/kubeconfig
+              subPath: kubeconfig
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /readyz/
+              port: 8000
+              scheme: HTTP
+          livenessProbe:
+            httpGet:
+              path: /readyz/
+              port: 8000
+              scheme: HTTP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: cert
+          secret:
+            secretName: webhook-cert
+        - name: kubeconfig
+          secret:
+            secretName: webhook-kubeconfig
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook
+  namespace: default
+  labels:
+    app: webhook
+spec:
+  ports:
+    - port: 443
+      targetPort: 8443
+      protocol: TCP
+      name: webhook
+  selector:
+    app: webhook
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webhook
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webhook
+subjects:
+  - kind: ServiceAccount
+    name: webhook
+    namespace: default
+
