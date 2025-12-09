@@ -1,0 +1,63 @@
+# Default values for hami-dra-webhook
+
+#Nvidia GPU Parameters
+resourceName: "nvidia.com/gpu"
+resourceMem: "nvidia.com/gpumem"
+resourceMemPercentage: "nvidia.com/gpumem-percentage"
+resourceCores: "nvidia.com/gpucores"
+resourcePriority: "nvidia.com/priority"
+
+#MLU Parameters
+mluResourceName: "cambricon.com/vmlu"
+mluResourceMem: "cambricon.com/mlu.smlu.vmemory"
+mluResourceCores: "cambricon.com/mlu.smlu.vcore"
+
+#Hygon DCU Parameters
+dcuResourceName: "hygon.com/dcunum"
+dcuResourceMem: "hygon.com/dcumem"
+dcuResourceCores: "hygon.com/dcucores"
+
+#Metax sGPU Parameters
+metaxResourceName: "metax-tech.com/sgpu"
+metaxResourceCore: "metax-tech.com/vcore"
+metaxResourceMem: "metax-tech.com/vmemory"
+metaxsGPUTopologyAware: "false"
+
+#Enflame VGCU Parameters
+enflameResourceNameVGCU: "enflame.com/vgcu"
+enflameResourceNameVGCUPercentage: "enflame.com/vgcu-percentage"
+
+#Kunlun XPU Parameters
+kunlunResourceName: "kunlunxin.com/xpu"
+kunlunResourceVCountName: "kunlunxin.com/vxpu"
+kunlunResourceVMemoryName: "kunlunxin.com/vxpu-memory"
+
+# Webhook deployment configuration
+webhook:
+  image:
+    repository: localhost:30050/hami-dra-webhook
+    tag: "latest"
+  
+  args:
+    webhookName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook
+    secretName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook-tls
+
+# Certificate configuration
+certs:
+  # Custom certificate (used when mode is "custom")
+  custom:
+    crt: ""
+    key: ""
+
+  # Cert-manager configuration (used when mode is "cert-manager")
+  certManager:
+    enabled: true
+    issuer:
+      clusterIssuerName: ""  # Required when type is "clusterIssuer"
+
+# Webhook configuration
+webhookConfig:
+  mutating:
+    enabled: true
+  validating:
+    enabled: true

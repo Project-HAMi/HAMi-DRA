@@ -25,7 +25,6 @@ go.work
 *~
 
 # Build artifacts
-webhook
 bin/
 
 # Kubernetes

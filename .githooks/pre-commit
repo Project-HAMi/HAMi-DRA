@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Pre-commit hook to check license headers
+# To install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+# Check if addlicense is available
+if command -v addlicense >/dev/null 2>&1; then
+    # Check license headers
+    if ! addlicense -c "The HAMi Authors" -l apache -y 2025 -s -f .license-header.txt -check . 2>/dev/null; then
+        echo "❌ Some files are missing license headers!"
+        echo "Run 'make license' to add license headers automatically."
+        exit 1
+    fi
+else
+    # Fallback: simple check for license header
+    missing_license=false
+    while IFS= read -r file; do
+        if ! head -n 20 "$file" | grep -q "Copyright 2025.*The HAMi Authors"; then
+            echo "❌ Missing license header: $file"
+            missing_license=true
+        fi
+    done < <(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./bin/*")
+    
+    if [ "$missing_license" = true ]; then
+        echo "Run 'make license' to add license headers automatically."
+        exit 1
+    fi
+fi
+
+echo "✓ License headers check passed"
+exit 0
+
