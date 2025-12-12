@@ -9,7 +9,6 @@ This webhook automatically transforms Pod specifications that request GPU resour
 ## Features
 
 - **Automatic Resource Conversion**: Converts GPU resource requests to ResourceClaims
-- **Multi-Device Support**: Supports NVIDIA GPU, MLU, Hygon DCU, Metax sGPU, Enflame VGCU, and Kunlun XPU
 - **Resource Cleanup**: Automatically removes GPU resources from Pod specs and creates corresponding ResourceClaims
 - **Annotation Support**: Supports device selection via Pod annotations (UUID, device type)
 
@@ -17,9 +16,13 @@ This webhook automatically transforms Pod specifications that request GPU resour
 
 ### Deploy with Helm
 
+You need to ensure [cert-manager](https://cert-manager.io/docs/installation/) is installed before installing the webhook.
+
 ```bash
 helm install hami-dra-webhook ./chart/hami-dra-webhook
 ```
+
+Then [use the same as hami](https://project-hami.io/zh/docs/userguide/nvidia-device/examples/use-exclusive-card/).
 
 ## Configuration
 
@@ -30,9 +33,3 @@ resourceName: "nvidia.com/gpu"
 resourceMem: "nvidia.com/gpumem"
 resourceCores: "nvidia.com/gpucores"
 ```
-
-## License
-
-Copyright 2025 The HAMi Authors.
-
-Licensed under the Apache License, Version 2.0.

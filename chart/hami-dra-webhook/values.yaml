@@ -35,7 +35,7 @@ kunlunResourceVMemoryName: "kunlunxin.com/vxpu-memory"
 # Webhook deployment configuration
 webhook:
   image:
-    repository: localhost:30050/hami-dra-webhook
+    repository: ghcr.io/project-hami/hami-dra
     tag: "latest"
   
   args:
@@ -61,3 +61,10 @@ webhookConfig:
     enabled: true
   validating:
     enabled: true
+
+drivers:
+  nvidia:
+    enabled: true
+    image:
+      repository: projecthami/k8s-dra-driver
+      tag: "v0.0.1-dev"
