@@ -62,9 +62,12 @@ webhookConfig:
   validating:
     enabled: true
 
+# DRA Drivers configuration
 drivers:
   nvidia:
     enabled: true
+    # If you are using gpu driver on host, you need to set this to false
+    containerDriver: true
     image:
       repository: projecthami/k8s-dra-driver
       tag: "v0.0.1-dev"

@@ -56,7 +56,7 @@ spec:
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: ""
         - name: NVIDIA_DRIVER_ROOT
-          value: /
+          value: {{ if .Values.drivers.nvidia.containerDriver }}/run/nvidia/driver{{ else }}/{{ end }}
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
         - name: CDI_ROOT

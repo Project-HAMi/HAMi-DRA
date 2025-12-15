@@ -26,15 +26,9 @@ jobs:
         with:
           version: v3.7.1
 
-      - name: Run chart-releaser (package + upload)
+      - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
         with:
           charts_dir: charts
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Re-generate index.yaml and push to gh-pages
-        run: |
-          cr index \
-            --charts-repo https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} \
-            --token "${{ secrets.GITHUB_TOKEN }}"
