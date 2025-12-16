@@ -25,7 +25,7 @@ spec:
         command: [bash, /usr/bin/kubelet-plugin-prestart.sh]
         env:
         - name: NVIDIA_DRIVER_ROOT
-          value: /
+          value: {{ if .Values.drivers.nvidia.containerDriver }}/run/nvidia/driver{{ else }}/{{ end }}
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
         - name: KUBELET_REGISTRAR_DIRECTORY_PATH
@@ -123,11 +123,11 @@ spec:
           type: ""
         name: cdi
       - hostPath:
-          path: /
+          path: {{if .Values.drivers.nvidia.containerDriver }}/run/nvidia{{ else }}/{{ end }}
           type: DirectoryOrCreate
         name: driver-root-parent
       - hostPath:
-          path: /
+          path: {{if .Values.drivers.nvidia.containerDriver }}/run/nvidia/driver{{ else }}/{{ end }}
           type: DirectoryOrCreate
         name: driver-root
       - hostPath:
