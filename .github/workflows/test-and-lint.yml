@@ -53,13 +53,10 @@ jobs:
           go-version: '1.25'
           cache-dependency-path: go.sum
 
-      - name: Install golangci-lint
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
-
-      - name: Run golangci-lint
-        run: make lint
+          version: v1.64.8
 
   fmt-check:
     name: Check Code Formatting
