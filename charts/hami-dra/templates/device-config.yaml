@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-device-config
+  name: {{ include "hami.dra.webhook.fullname" . }}-device-config
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: hami-scheduler

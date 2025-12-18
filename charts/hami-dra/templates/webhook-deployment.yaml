@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-dra-webhook
+  name: {{ include "hami.dra.webhook.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: {{ .Release.Name }}-dra-webhook
+    app.kubernetes.io/name: {{ include "hami.dra.webhook.fullname" . }}
     {{- include "hami-dra-webhook.labels" . | nindent 4 }}
 spec:
   replicas: 1
@@ -16,10 +16,11 @@ spec:
       labels:
         {{- include "hami-dra-webhook.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ .Release.Name }}-dra-webhook-serviceaccount
+      {{- include "hami.dra.webhook.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "hami.dra.webhook.fullname" . }}
       containers:
         - name: webhook
-          image: {{ .Values.webhook.image.repository }}:{{ .Values.webhook.image.tag }}
+          image: {{ include "hami.dra.webhook.image" . }}
           imagePullPolicy: "IfNotPresent"
           command:
             - /webhook
@@ -69,17 +70,13 @@ spec:
           #   timeoutSeconds: 5
           #   successThreshold: 1
           #   failureThreshold: 3
-          resources:
-            limits:
-              cpu: 500m
-              memory: 512Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
       volumes:
         - name: device-config
           configMap:
-            name: {{ .Release.Name }}-device-config
+            name: {{ include "hami.dra.webhook.fullname" . }}-device-config
         - name: tls-config
           secret:
             secretName: {{ if .Values.certs.certManager.enabled }}{{ .Release.Name }}-dra-webhook-tls{{ else }}{{ .Release.Name }}-tls{{ end }}
