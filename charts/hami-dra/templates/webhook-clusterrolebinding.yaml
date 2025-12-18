@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Name }}-dra-webhook-clusterrolebinding
+  name: {{ include "hami.dra.webhook.fullname" . }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Release.Name }}-dra-webhook-clusterrole
+  name: {{ include "hami.dra.webhook.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-dra-webhook-serviceaccount
+    name: {{ include "hami.dra.webhook.fullname" . }}
     namespace: {{ .Release.Namespace }}

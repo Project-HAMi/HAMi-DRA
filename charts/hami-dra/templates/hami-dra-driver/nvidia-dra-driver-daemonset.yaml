@@ -1,5 +1,4 @@
 {{- if .Values.drivers.nvidia.enabled }}
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -17,9 +16,10 @@ spec:
         app.kubernetes.io/name: hami-dra-driver
         hami-dra-driver-component: kubelet-plugin
     spec:
+      {{- include "hami.dra.driver.nvidia.imagePullSecrets" . | nindent 6 }}
       initContainers:
       - name: init-container
-        image: {{ .Values.drivers.nvidia.image.repository }}:{{ .Values.drivers.nvidia.image.tag }}
+        image: {{ include "hami.dra.driver.nvidia.image" . }}
         securityContext:
           privileged: true
         command: [bash, /usr/bin/kubelet-plugin-prestart.sh]
@@ -78,12 +78,12 @@ spec:
         - name: KUBELET_PLUGINS_DIRECTORY_PATH
           value: /var/lib/kubelet/plugins
         - name: IMAGE_NAME
-          value: {{ .Values.drivers.nvidia.image.repository }}:{{ .Values.drivers.nvidia.image.tag }}
+          value: {{ include "hami.dra.driver.nvidia.image" . }}
         lifecycle:
           postStart:
             exec:
               command: ["/bin/bash", "-c", "/usr/bin/vgpu-init.sh /usr/local/vgpu/"]
-        image: {{ .Values.drivers.nvidia.image.repository }}:{{ .Values.drivers.nvidia.image.tag }}
+        image: {{ include "hami.dra.driver.nvidia.image" . }}
         imagePullPolicy: IfNotPresent
         name: gpus
         securityContext:
