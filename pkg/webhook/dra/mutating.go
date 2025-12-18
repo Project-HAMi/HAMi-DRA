@@ -47,7 +47,6 @@ var _ admission.Handler = &MutatingAdmission{}
 // Handle yields a response to an AdmissionRequest.
 func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
 	pod := &corev1.Pod{}
-
 	err := a.Decoder.Decode(req, pod)
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
@@ -66,12 +65,12 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		if rcName != "" {
 			needPatch = true
 			rcNameList = append(rcNameList, rcName)
+			container.Resources.Claims = []corev1.ResourceClaim{{Name: rcName}}
+			pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, corev1.PodResourceClaim{
+				Name:              rcName,
+				ResourceClaimName: &rcName,
+			})
 		}
-		container.Resources.Claims = []corev1.ResourceClaim{{Name: rcName}}
-		pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, corev1.PodResourceClaim{
-			Name:              rcName,
-			ResourceClaimName: &rcName,
-		})
 	}
 
 	klog.V(5).InfoS("Pod after patching", "pod", pod)
@@ -101,19 +100,49 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		}
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
 func (a *MutatingAdmission) handelContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod) (string, error) {
-	if _, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCountName)]; !ok {
+	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
+	countQty, ok := container.Resources.Limits[countResourceName]
+	if !ok {
 		return "", nil
 	}
+
 	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name)
-	resourceclaim := &resourceapi.ResourceClaim{
+	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
+
+	resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
+
+	// Remove count resource from container
+	a.removeResource(container, countResourceName)
+
+	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = coreQty
+		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
+	}
+	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memQty
+		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
+	}
+
+	a.addAnnotationSelectors(resourceclaim, pod)
+
+	if err := a.Client.Create(ctx, resourceclaim); err != nil {
+		return "", fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
+	}
+
+	klog.V(4).Infof("Successfully created ResourceClaim %s/%s", pod.Namespace, rcName)
+	return rcName, nil
+}
+
+// buildResourceClaim creates a ResourceClaim with default selectors.
+func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resourceapi.ResourceClaim {
+	return &resourceapi.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      rcName,
-			Namespace: pod.Namespace,
+			Name:      name,
+			Namespace: namespace,
 		},
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{
@@ -123,7 +152,7 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 						Exactly: &resourceapi.ExactDeviceRequest{
 							AllocationMode: resourceapi.DeviceAllocationModeExactCount,
 							Capacity: &resourceapi.CapacityRequirements{
-								Requests: map[resourceapi.QualifiedName]resource.Quantity{},
+								Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
 							},
 							DeviceClassName: constants.NvidiaDraDriver,
 							Selectors: []resourceapi.DeviceSelector{
@@ -139,45 +168,35 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 			},
 		},
 	}
-	q, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCountName)]
-	if !ok {
-		klog.Errorf("Resource %s not found in Pod(%s/%s)", a.DeviceConfig.ResourceCountName, pod.Namespace, pod.Name)
-		return "", fmt.Errorf("resource %s not found in Pod(%s/%s)", a.DeviceConfig.ResourceCountName, pod.Namespace, pod.Name)
+}
+
+// removeResource removes a resource from both Requests and Limits
+func (a *MutatingAdmission) removeResource(container *corev1.Container, resourceName corev1.ResourceName) {
+	if container.Resources.Requests != nil {
+		delete(container.Resources.Requests, resourceName)
 	}
-	resourceclaim.Spec.Devices.Requests[0].Exactly.Count = q.Value()
-	delete(container.Resources.Requests, corev1.ResourceName(a.DeviceConfig.ResourceCountName))
-	delete(container.Resources.Limits, corev1.ResourceName(a.DeviceConfig.ResourceCountName))
-	c, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]
-	if ok {
-		delete(container.Resources.Requests, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
-		delete(container.Resources.Limits, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = c
+	if container.Resources.Limits != nil {
+		delete(container.Resources.Limits, resourceName)
 	}
-	m, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]
-	if ok {
-		delete(container.Resources.Requests, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
-		delete(container.Resources.Limits, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = m
-	}
+}
+
+// addAnnotationSelectors adds device selectors based on pod annotations.
+func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod) {
+	exactly := resourceclaim.Spec.Devices.Requests[0].Exactly
+
 	if uuid, ok := pod.Annotations[constants.UseUUIDAnnotation]; ok {
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Selectors = append(resourceclaim.Spec.Devices.Requests[0].Exactly.Selectors, resourceapi.DeviceSelector{
+		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
 				Expression: fmt.Sprintf(`device.attributes["%s"].uuid == "%s"`, constants.NvidiaDraDriver, uuid),
 			},
 		})
 	}
+
 	if deviceType, ok := pod.Annotations[constants.UseTypeAnnotation]; ok {
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Selectors = append(resourceclaim.Spec.Devices.Requests[0].Exactly.Selectors, resourceapi.DeviceSelector{
+		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
 				Expression: fmt.Sprintf(`device.attributes["%s"].productName == "%s"`, constants.NvidiaDraDriver, deviceType),
 			},
 		})
 	}
-
-	err := a.Client.Create(ctx, resourceclaim)
-	if err != nil {
-		return "", fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
-	}
-	klog.V(4).Infof("Successfully created ResourceClaim %s/%s", pod.Namespace, rcName)
-	return rcName, nil
 }
