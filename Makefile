@@ -1,12 +1,40 @@
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+BUILD_ARCH ?= linux/$(GOARCH)
+
+ifeq ($(BUILD_ARM),true)
+ifneq ($(GOARCH),arm64)
+	  BUILD_ARCH= linux/$(GOARCH),linux/arm64
+endif
+endif
+ifeq ($(BUILD_X86),true)
+ifneq ($(GOARCH),amd64)
+	  BUILD_ARCH= linux/$(GOARCH),linux/amd64
+endif
+endif
+
+REGISTRY_REPO?="ghcr.io/projecthami"
+
 .PHONY: build docker-build test clean run license license-check fmt lint
 
 # Build the webhook binary
 build:
 	go build -o bin/webhook cmd/webhook/main.go
 
-# Build Docker image
+# Build docker images
+.PHONY: docker-build
 docker-build:
-	docker build --no-cache -t hami-dra-webhook:latest .
+	echo "Building hami-dra-webhook for arch = $(BUILD_ARCH)"
+	export DOCKER_CLI_EXPERIMENTAL=enabled ;\
+	! ( docker buildx ls | grep hami-dra-webhook-multi-platform-builder ) && docker buildx create --use --platform=$(BUILD_ARCH) --name hami-dra-webhook-multi-platform-builder --driver-opt image=docker.io/moby/buildkit:buildx-stable-1 ;\
+	docker buildx build \
+			--builder hami-dra-webhook-multi-platform-builder \
+			--platform $(BUILD_ARCH) \
+			--build-arg LDFLAGS=$(LDFLAGS) \
+			--tag $(REGISTRY_REPO)/hami-dra-webhook:latest  \
+			-f ./docker/hami-dra-webhook/Dockerfile \
+			--load \
+			.
 
 # Run tests
 test:

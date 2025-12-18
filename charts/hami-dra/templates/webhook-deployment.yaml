@@ -23,7 +23,7 @@ spec:
           image: {{ include "hami.dra.webhook.image" . }}
           imagePullPolicy: "IfNotPresent"
           command:
-            - /webhook
+            - /bin/webhook
             - --v=5
             - --bind-address=0.0.0.0
             - --secure-port=8443
