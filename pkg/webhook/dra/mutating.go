@@ -55,6 +55,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	klog.V(5).Infof("Mutating Pod(%s/%s) for request: %s", req.Namespace, pod.Name, req.Operation)
 	needPatch := false
+	rcNameList := []string{}
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
@@ -64,6 +65,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		}
 		if rcName != "" {
 			needPatch = true
+			rcNameList = append(rcNameList, rcName)
 		}
 		container.Resources.Claims = []corev1.ResourceClaim{{Name: rcName}}
 		pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, corev1.PodResourceClaim{
@@ -85,6 +87,18 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
+		// Cleanup the ResourceClaims created for this pod
+		for _, rcName := range rcNameList {
+			deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rcName,
+					Namespace: pod.Namespace,
+				},
+			})
+			if deletionErr != nil {
+				klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) for request: %s after an error occurs", pod.Namespace, pod.Name, req.Operation)
+			}
+		}
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
