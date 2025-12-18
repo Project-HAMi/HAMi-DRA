@@ -123,7 +123,8 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memQty
+		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value() * 1024 * 1024))
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = mem
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}
 
