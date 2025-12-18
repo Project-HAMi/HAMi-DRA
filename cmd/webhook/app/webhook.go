@@ -38,6 +38,7 @@ import (
 
 	"github.com/Project-HAMi/HAMi-DRA/cmd/webhook/app/options"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/version"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/dra"
 )
 
@@ -106,7 +107,9 @@ Kubernetes resources.`,
 
 // Run runs the webhook server with options. This should never exit.
 func Run(ctx context.Context, opts *options.Options) error {
-	klog.Infof("webhook server version: %s", "v1.0.0")
+	klog.Infof("hami-dra-webhook version: %s", version.Get())
+	klog.InfoS("Golang settings", "GOGC", os.Getenv("GOGC"), "GOMAXPROCS", os.Getenv("GOMAXPROCS"), "GOTRACEBACK", os.Getenv("GOTRACEBACK"))
+
 	deviceConfigBytes, err := os.ReadFile(opts.DeviceConfigFile)
 	if err != nil {
 		klog.Errorf("Failed to read device config file: %v", err)
@@ -173,10 +176,12 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.Client = hookManager.GetClient()
 	mutatingAdmission.DeviceConfig = deviceConfig
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
+
 	validatingAdmission := &dra.ValidatingAdmission{}
 	validatingAdmission.Decoder = decoder
 	validatingAdmission.Client = hookManager.GetClient()
 	hookServer.Register("/validate", &webhook.Admission{Handler: validatingAdmission})
+
 	// blocks until the context is done.
 	if err := hookManager.Start(ctx); err != nil {
 		klog.Errorf("webhook server exits unexpectedly: %v", err)
