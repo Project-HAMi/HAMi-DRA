@@ -1,5 +1,28 @@
 apiVersion: v1
 entries:
+  hami-dra:
+  - apiVersion: v2
+    appVersion: 0.0.1
+    created: "2025-12-19T06:18:53.049457013Z"
+    description: A Helm chart for HAMi DRA
+    digest: 347a18db0075baeb6db3b24f3ddfdf1026a9a2174b58c302d32114d1482915ba
+    home: https://github.com/Project-HAMi/HAMi-DRA
+    keywords:
+    - webhook
+    - kubernetes
+    - admission-controller
+    - hami
+    - dra
+    maintainers:
+    - name: hami-dra
+      url: https://github.com/Project-HAMi/HAMi-DRA
+    name: hami-dra
+    sources:
+    - https://github.com/Project-HAMi/HAMi-DRA
+    type: application
+    urls:
+    - https://github.com/Project-HAMi/HAMi-DRA/releases/download/hami-dra-0.0.1/hami-dra-0.0.1.tgz
+    version: 0.0.1
   hami-dra-webhook:
   - apiVersion: v2
     appVersion: 0.1.2
@@ -43,4 +66,4 @@ entries:
     urls:
     - https://github.com/Project-HAMi/HAMi-DRA/releases/download/hami-dra-webhook-0.1.0/hami-dra-webhook-0.1.0.tgz
     version: 0.1.0
-generated: "2025-12-16T11:07:31.510765324Z"
+generated: "2025-12-19T06:18:53.049490425Z"
