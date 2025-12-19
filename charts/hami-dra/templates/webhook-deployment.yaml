@@ -21,7 +21,7 @@ spec:
       containers:
         - name: webhook
           image: {{ include "hami.dra.webhook.image" . }}
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: {{ .Values.webhook.image.pullPolicy | default "IfNotPresent" }}
           command:
             - /bin/webhook
             - --v=5
@@ -50,29 +50,6 @@ spec:
             - name: tls-config
               mountPath: /tls
               readOnly: true
-          # readinessProbe:
-          #   httpGet:
-          #     path: /readyz
-          #     port: 8000
-          #     scheme: HTTP
-          #   initialDelaySeconds: 5
-          #   periodSeconds: 10
-          #   timeoutSeconds: 5
-          #   successThreshold: 1
-          #   failureThreshold: 3
-          # livenessProbe:
-          #   httpGet:
-          #     path: /readyz
-          #     port: 8000
-          #     scheme: HTTP
-          #   initialDelaySeconds: 15
-          #   periodSeconds: 20
-          #   timeoutSeconds: 5
-          #   successThreshold: 1
-          #   failureThreshold: 3
-          {{- if .Values.resources }}
-          resources: {{- toYaml .Values.resources | nindent 12 }}
-          {{- end }}
       volumes:
         - name: device-config
           configMap:

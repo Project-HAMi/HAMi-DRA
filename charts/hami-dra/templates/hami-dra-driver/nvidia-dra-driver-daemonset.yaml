@@ -84,7 +84,7 @@ spec:
             exec:
               command: ["/bin/bash", "-c", "/usr/bin/vgpu-init.sh /usr/local/vgpu/"]
         image: {{ include "hami.dra.driver.nvidia.image" . }}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: {{ .Values.drivers.nvidia.image.pullPolicy | default "IfNotPresent" }}
         name: gpus
         securityContext:
           privileged: true

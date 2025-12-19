@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "hami.dra.webhook.fullname" . }}
+  name: {{ .Release.Name }}-dra-webhook
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "hami-dra-webhook.selectorLabels" . | nindent 4 }}
