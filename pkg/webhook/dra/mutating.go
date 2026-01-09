@@ -110,6 +110,7 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 		return "", nil
 	}
 
+	// TODO: refactor the name generator to avoid too long name
 	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name)
 	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
 
@@ -123,7 +124,7 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value() * 1024 * 1024))
+		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
 		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = mem
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}

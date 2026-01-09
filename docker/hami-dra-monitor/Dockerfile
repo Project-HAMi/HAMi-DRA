@@ -1,0 +1,27 @@
+# Build the monitor binary
+FROM golang:1.24.0 AS builder
+
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
+
+# Copy the go source
+COPY cmd/ cmd/
+COPY pkg/ pkg/
+
+# Build
+RUN go build -ldflags="-s -w" -a -o monitor cmd/monitor/main.go && echo "Building GOARCH of $GOARCH.."
+
+FROM  alpine:3.18
+COPY --from=builder /workspace/monitor /bin/monitor
+CMD ["/bin/monitor"]
+

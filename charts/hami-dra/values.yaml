@@ -47,12 +47,12 @@ webhook:
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-webhook
-    tag: "latest"
+    tag: "v0.1.0"
     ## Specify a imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
     ##
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     ## Optionally specify an array of imagePullSecrets.
     ## Secrets must be manually created in the namespace.
     ## Example:
@@ -81,6 +81,42 @@ webhook:
     validating:
       enabled: true
 
+# Monitor deployment configuration
+monitor:
+  enabled: true
+  replicas: 1
+  image:
+    registry: ghcr.io
+    repository: project-hami/hami-dra-monitor
+    tag: "v0.1.0"
+    ## Specify a imagePullPolicy
+    ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+    ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+    ##
+    pullPolicy: Always
+    ## Optionally specify an array of imagePullSecrets.
+    ## Secrets must be manually created in the namespace.
+    ## Example:
+    ## pullSecrets:
+    ##   - myRegistryKeySecretName
+    ##
+    pullSecrets: []
+  ## @param resources monitor resource requests and limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  ## Monitor configuration
+  logLevel: 2
+  metricsBindAddress: ":8080"
+  healthProbeBindAddress: ":8000"
+  kubeAPIQPS: 40.0
+  kubeAPIBurst: 60
+  collectInterval: "30s"
+
 # Certificate configuration
 certs:
   # Custom certificate (used when mode is "custom")
@@ -90,6 +126,10 @@ certs:
   # Cert-manager configuration (used when mode is "cert-manager")
   certManager:
     enabled: true
+    # Private key rotation policy: "Never" or "Always"
+    # In cert-manager >= v1.18.0, the default changed from "Never" to "Always"
+    # Setting to "Never" avoids frequent certificate rotation for webhooks
+    privateKeyRotationPolicy: "Never"
     issuer:
       clusterIssuerName: ""  # Required when type is "clusterIssuer"
 

@@ -14,6 +14,8 @@ spec:
     kind: Issuer
     name: {{ .Release.Name }}-dra-webhook-selfsigned-issuer
   secretName: {{ .Release.Name }}-dra-webhook-tls
+  privateKey:
+    rotationPolicy: {{ .Values.certs.certManager.privateKeyRotationPolicy | default "Never" }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Issuer

@@ -14,21 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package constants
+package main
 
-const (
-	UseUUIDAnnotation = "nvidia.com/use-gpuuuid"
-	UseTypeAnnotation = "nvidia.com/use-gputype"
+import (
+	"os"
 
-	NvidiaDraDriver  = "hami-core-gpu.project-hami.io"
-	NvidiaDeviceType = "hami-gpu"
+	"k8s.io/component-base/cli"
+	"k8s.io/component-base/logs"
+	_ "k8s.io/component-base/logs/json/register" // for JSON log format registration
+	controllerruntime "sigs.k8s.io/controller-runtime"
 
-	DraLabel = "hami.io/dra"
-
-	DeviceAttributeUUID         = "uuid"
-	DeviceAttributeArchitecture = "architecture"
-	DeviceAttributeBrand        = "brand"
-	DeviceAttributeProductName  = "productName"
-	DeviceCapacityCores         = "cores"
-	DeviceCapacityMemory        = "memory"
+	"github.com/Project-HAMi/HAMi-DRA/cmd/monitor/app"
 )
+
+func main() {
+	ctx := controllerruntime.SetupSignalHandler()
+	cmd := app.NewMonitorCommand(ctx)
+	exitCode := cli.Run(cmd)
+	// Ensure any buffered log entries are flushed
+	logs.FlushLogs()
+	os.Exit(exitCode)
+}
