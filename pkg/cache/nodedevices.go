@@ -57,8 +57,8 @@ type NodeDevice struct {
 
 type DeviceAllocation struct {
 	AllocationResults []*AllocationResult
-	UsedBy     []string
-	NodeName   string
+	UsedBy            []string
+	NodeName          string
 }
 
 type AllocationResult struct {
@@ -138,7 +138,7 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
-	
+
 	if nodeInfo == nil {
 		return nil
 	}
@@ -216,10 +216,10 @@ func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 				n.increseNodeUsage(nodeName, result.Device, coresPerDevice.Value(), memoryPerDevice.Value())
 
 				allocationResult := &AllocationResult{
-						Namespace:  claim.Namespace,
-						DeviceName: result.Device,
-						Cores:      coresPerDevice.Value(),
-						Memory:     memoryPerDevice.Value(),
+					Namespace:  claim.Namespace,
+					DeviceName: result.Device,
+					Cores:      coresPerDevice.Value(),
+					Memory:     memoryPerDevice.Value(),
 				}
 				allocation.AllocationResults = append(allocation.AllocationResults, allocationResult)
 			} else {
@@ -285,7 +285,7 @@ func (n *NodeDevices) increseNodeUsage(nodeName, deviceName string, coresPerDevi
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
-	
+
 	if nodeInfo == nil {
 		klog.Warningf("Node %s not found when updating device usage", nodeName)
 		return
@@ -309,7 +309,7 @@ func (n *NodeDevices) decreaseNodeUsage(nodeName, deviceName string, coresPerDev
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
-	
+
 	if nodeInfo == nil {
 		klog.Warningf("Node %s not found when decreasing device usage", nodeName)
 		return

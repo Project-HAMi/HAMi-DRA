@@ -116,7 +116,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					break
 				}
 			}
-	
+
 			deviceName := ""
 			deviceBrand := ""
 			deviceProductName := ""
@@ -136,7 +136,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				klog.Warningf("Device %s not found for claim %s", result.DeviceName, claim.NodeName)
 				continue
 			}
-	
+
 			for _, podName := range claim.UsedBy {
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUCoreAllocatedDesc,
