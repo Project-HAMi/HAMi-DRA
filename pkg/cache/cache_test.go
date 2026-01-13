@@ -17,10 +17,12 @@ limitations under the License.
 package cache
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
+	v1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,8 +80,6 @@ func TestCache_Start_Stop(t *testing.T) {
 func TestCache_GetDevices(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
-		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// Initially should be empty
@@ -349,48 +349,7 @@ func TestCache_onAddClaim_WithAllocation(t *testing.T) {
 	c.onAddSlice(slice)
 
 	// Create claim with allocation
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-claim",
-			Namespace: "default",
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: "gpu",
-						Exactly: &resourceapi.ExactDeviceRequest{
-							Count: 1,
-							Capacity: &resourceapi.CapacityRequirements{
-								Requests: map[resourceapi.QualifiedName]resource.Quantity{
-									constants.DeviceCapacityCores:  resource.MustParse("50"),
-									constants.DeviceCapacityMemory: resource.MustParse("8000"),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "gpu",
-							Driver:  "test-driver",
-							Pool:    nodeName,
-							Device:  "gpu0",
-							ConsumedCapacity: map[resourceapi.QualifiedName]resource.Quantity{
-								constants.DeviceCapacityCores:  resource.MustParse("50"),
-								constants.DeviceCapacityMemory: resource.MustParse("8000"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	claim := createTestResourceClaim("test-claim", "default", nodeName, "gpu0", 50, 8000)
 
 	c.onAddClaim(claim)
 
@@ -446,48 +405,7 @@ func TestCache_onDeleteClaim(t *testing.T) {
 	c.onAddSlice(slice)
 
 	// Create and add claim
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-claim",
-			Namespace: "default",
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: "gpu",
-						Exactly: &resourceapi.ExactDeviceRequest{
-							Count: 1,
-							Capacity: &resourceapi.CapacityRequirements{
-								Requests: map[resourceapi.QualifiedName]resource.Quantity{
-									constants.DeviceCapacityCores:  resource.MustParse("50"),
-									constants.DeviceCapacityMemory: resource.MustParse("8000"),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "gpu",
-							Driver:  "test-driver",
-							Pool:    nodeName,
-							Device:  "gpu0",
-							ConsumedCapacity: map[resourceapi.QualifiedName]resource.Quantity{
-								constants.DeviceCapacityCores:  resource.MustParse("50"),
-								constants.DeviceCapacityMemory: resource.MustParse("8000"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	claim := createTestResourceClaim("test-claim", "default", nodeName, "gpu0", 50, 8000)
 
 	c.onAddClaim(claim)
 
@@ -541,91 +459,8 @@ func TestCache_onUpdateClaim(t *testing.T) {
 	slice := createTestResourceSlice("test-slice", nodeName, "gpu0", "test-uuid-1")
 	c.onAddSlice(slice)
 
-	oldClaim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-claim",
-			Namespace: "default",
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: "gpu",
-						Exactly: &resourceapi.ExactDeviceRequest{
-							Count: 1,
-							Capacity: &resourceapi.CapacityRequirements{
-								Requests: map[resourceapi.QualifiedName]resource.Quantity{
-									constants.DeviceCapacityCores:  resource.MustParse("50"),
-									constants.DeviceCapacityMemory: resource.MustParse("8000"),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "gpu",
-							Driver:  "test-driver",
-							Pool:    nodeName,
-							Device:  "gpu0",
-							ConsumedCapacity: map[resourceapi.QualifiedName]resource.Quantity{
-								constants.DeviceCapacityCores:  resource.MustParse("50"),
-								constants.DeviceCapacityMemory: resource.MustParse("8000"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	newClaim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-claim",
-			Namespace: "default",
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: "gpu",
-						Exactly: &resourceapi.ExactDeviceRequest{
-							Count: 1,
-							Capacity: &resourceapi.CapacityRequirements{
-								Requests: map[resourceapi.QualifiedName]resource.Quantity{
-									constants.DeviceCapacityCores:  resource.MustParse("75"),
-									constants.DeviceCapacityMemory: resource.MustParse("12000"),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "gpu",
-							Driver:  "test-driver",
-							Pool:    nodeName,
-							Device:  "gpu0",
-							ConsumedCapacity: map[resourceapi.QualifiedName]resource.Quantity{
-								constants.DeviceCapacityCores:  resource.MustParse("75"),
-								constants.DeviceCapacityMemory: resource.MustParse("12000"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	oldClaim := createTestResourceClaim("test-claim", "default", nodeName, "gpu0", 50, 8000)
+	newClaim := createTestResourceClaim("test-claim", "default", nodeName, "gpu0", 75, 12000)
 
 	c.onAddClaim(oldClaim)
 	c.onUpdateClaim(oldClaim, newClaim)
@@ -706,4 +541,63 @@ func createTestResourceSlice(name, nodeName, deviceName, uuid string) *resourcea
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+// createTestResourceClaim creates a ResourceClaim with allocation and NodeSelector
+func createTestResourceClaim(name, namespace, nodeName, deviceName string, cores, memory int64) *resourceapi.ResourceClaim {
+	return &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: resourceapi.ResourceClaimSpec{
+			Devices: resourceapi.DeviceClaim{
+				Requests: []resourceapi.DeviceRequest{
+					{
+						Name: "gpu",
+						Exactly: &resourceapi.ExactDeviceRequest{
+							Count: 1,
+							Capacity: &resourceapi.CapacityRequirements{
+								Requests: map[resourceapi.QualifiedName]resource.Quantity{
+									constants.DeviceCapacityCores:  resource.MustParse(fmt.Sprintf("%d", cores)),
+									constants.DeviceCapacityMemory: resource.MustParse(fmt.Sprintf("%d", memory)),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: resourceapi.ResourceClaimStatus{
+			Allocation: &resourceapi.AllocationResult{
+				NodeSelector: &v1.NodeSelector{
+					NodeSelectorTerms: []v1.NodeSelectorTerm{
+						{
+							MatchFields: []v1.NodeSelectorRequirement{
+								{
+									Key:      "metadata.name",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{nodeName},
+								},
+							},
+						},
+					},
+				},
+				Devices: resourceapi.DeviceAllocationResult{
+					Results: []resourceapi.DeviceRequestAllocationResult{
+						{
+							Request: "gpu",
+							Driver:  "test-driver",
+							Pool:    nodeName,
+							Device:  deviceName,
+							ConsumedCapacity: map[resourceapi.QualifiedName]resource.Quantity{
+								constants.DeviceCapacityCores:  resource.MustParse(fmt.Sprintf("%d", cores)),
+								constants.DeviceCapacityMemory: resource.MustParse(fmt.Sprintf("%d", memory)),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
