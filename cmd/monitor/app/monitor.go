@@ -145,15 +145,21 @@ func Run(ctx context.Context, opts *options.Options) error {
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			klog.Errorf("Failed to write healthz response: %v", err)
+		}
 	})
 	healthMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if cacheInstance.IsReady() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ready"))
+			if _, err := w.Write([]byte("ready")); err != nil {
+				klog.Errorf("Failed to write readyz response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("not ready"))
+			if _, err := w.Write([]byte("not ready")); err != nil {
+				klog.Errorf("Failed to write readyz response: %v", err)
+			}
 		}
 	})
 	healthServer := &http.Server{

@@ -28,9 +28,11 @@ import (
 )
 
 func TestNewCache(t *testing.T) {
-	c := NewCache()
+	// Use fake client for testing to avoid requiring real Kubernetes cluster
+	client := fake.NewSimpleClientset()
+	c := NewCacheWithClient(client)
 	if c == nil {
-		t.Fatal("NewCache() returned nil")
+		t.Fatal("NewCacheWithClient() returned nil")
 	}
 	if c.NodeDevices == nil {
 		t.Error("NodeDevices should not be nil")
@@ -48,12 +50,7 @@ func TestCache_Start_Stop(t *testing.T) {
 	client := fake.NewSimpleClientset()
 
 	// Create cache with fake client
-	c := &Cache{
-		NodeDevices: NewNodeDevices(),
-		stopCh:      make(chan struct{}),
-		kubeClient:  client,
-		ready:       false,
-	}
+	c := NewCacheWithClient(client)
 
 	// Start cache
 	err := c.Start()

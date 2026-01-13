@@ -40,17 +40,26 @@ type Cache struct {
 	ready       bool
 }
 
+// NewCache creates a new Cache with a Kubernetes client.
+// This function will attempt to create a real Kubernetes client.
+// For testing, use NewCacheWithClient instead.
 func NewCache() *Cache {
 	klog.Infof("Initializing cache")
 	kubeClient, err := utils.NewClient()
 	if err != nil {
 		klog.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
+	return NewCacheWithClient(kubeClient.Interface)
+}
+
+// NewCacheWithClient creates a new Cache with the provided Kubernetes client.
+// This is useful for testing with fake clients.
+func NewCacheWithClient(kubeClient kubernetes.Interface) *Cache {
 	return &Cache{
 		stopCh:      make(chan struct{}),
 		ready:       false,
 		NodeDevices: NewNodeDevices(),
-		kubeClient:  kubeClient.Interface,
+		kubeClient:  kubeClient,
 	}
 }
 
@@ -61,11 +70,14 @@ func (c *Cache) Start() error {
 
 	// First, set up ResourceSlice informer and handlers
 	sliceInformer := informerFactory.Resource().V1().ResourceSlices().Informer()
-	sliceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := sliceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.onAddSlice,
 		UpdateFunc: c.onUpdateSlice,
 		DeleteFunc: c.onDeleteSlice,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add ResourceSlice event handler: %w", err)
+	}
 
 	// Start informer factory
 	klog.V(5).Info("Starting informer factory")
@@ -82,11 +94,14 @@ func (c *Cache) Start() error {
 	// Now set up ResourceClaim informer handlers
 	// ResourceSlice data is already available, so ResourceClaim handlers can safely reference it
 	claimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
-	claimInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = claimInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.onAddClaim,
 		UpdateFunc: c.onUpdateClaim,
 		DeleteFunc: c.onDeleteClaim,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add ResourceClaim event handler: %w", err)
+	}
 
 	// Wait for ResourceClaim to sync
 	// Note: The informer may have already synced, but we need to ensure it's synced after handlers are registered
@@ -185,7 +200,35 @@ func (c *Cache) onUpdateSlice(oldObj, newObj interface{}) {
 	newNodeInfo.mu.Lock()
 	defer newNodeInfo.mu.Unlock()
 
+	// Save existing device usage before replacing the device list
+	// Use device name as key since it's more stable than UUID
+	existingUsage := make(map[string]struct {
+		CoresUsed  int64
+		MemoryUsed int64
+	})
+	for _, device := range newNodeInfo.Devices {
+		existingUsage[device.Name] = struct {
+			CoresUsed  int64
+			MemoryUsed int64
+		}{
+			CoresUsed:  device.CoresUsed,
+			MemoryUsed: device.MemoryUsed,
+		}
+	}
+
+	// Parse new device list (this will reset CoresUsed and MemoryUsed to 0)
 	newNodeInfo.Devices = c.ParseNodeDevice(newSlice)
+
+	// Restore usage from existing devices
+	for _, device := range newNodeInfo.Devices {
+		if usage, ok := existingUsage[device.Name]; ok {
+			device.CoresUsed = usage.CoresUsed
+			device.MemoryUsed = usage.MemoryUsed
+			klog.V(5).Infof("Restored usage for device %s (%s) on node %s: CoresUsed=%d, MemoryUsed=%d",
+				device.Name, device.UUID, newNodeName, device.CoresUsed, device.MemoryUsed)
+		}
+	}
+
 	klog.V(4).Infof("Updated ResourceSlice %s for node %s", newSlice.Name, newNodeName)
 }
 
