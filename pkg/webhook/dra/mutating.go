@@ -111,7 +111,7 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 		return "", nil
 	}
 
-	// TODO: refactor the name generator to avoid too long name
+	// TODO: refactor the name generator to avoid too long name and avoid empty name for generated pod.
 	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name)
 	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
 

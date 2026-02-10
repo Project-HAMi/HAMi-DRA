@@ -19,7 +19,6 @@ package dra
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -53,18 +52,27 @@ func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request)
 	}
 	klog.V(5).Infof("Validating Pod(%s/%s) for request: %s", req.Namespace, pod.Name, req.Operation)
 
-	for _, container := range pod.Spec.Containers {
+	resourceClaimNameList := getResourceClaimName(pod)
+	for _, resourceClaimName := range resourceClaimNameList {
 		err := v.Client.Delete(ctx, &resourceapi.ResourceClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name),
+				Name:      resourceClaimName,
 				Namespace: pod.Namespace,
 			},
 		})
 		if err != nil && !apierrors.IsNotFound(err) {
-			klog.Warningf("Failed to delete ResourceClaim %s/%s: %v", pod.Namespace, fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name), err)
+			klog.Warningf("Failed to delete ResourceClaim %s/%s: %v", pod.Namespace, resourceClaimName, err)
 			continue
 		}
 	}
 
 	return admission.Allowed("")
+}
+
+func getResourceClaimName(pod *corev1.Pod) []string {
+	resourceClaimNameList := []string{}
+	for _, resourceClaim := range pod.Spec.ResourceClaims {
+		resourceClaimNameList = append(resourceClaimNameList, resourceClaim.Name)
+	}
+	return resourceClaimNameList
 }
