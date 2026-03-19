@@ -10,5 +10,5 @@ rules:
   resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["resource.k8s.io"]
-  resources: ["resourceclaims"]
+  resources: ["resourceclaims", "resourceclaimtemplates"]
   verbs: ["*"]

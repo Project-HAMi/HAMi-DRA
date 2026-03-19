@@ -35,12 +35,14 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	vcv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"github.com/Project-HAMi/HAMi-DRA/cmd/webhook/app/options"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/featuregates"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/version"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/dra"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/volcano"
 )
 
 // NewWebhookCommand creates a *cobra.Command object with default parameters
@@ -127,6 +129,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	// Create a new scheme and add default Kubernetes schemes
 	sch := runtime.NewScheme()
 	_ = scheme.AddToScheme(sch)
+	_ = vcv1alpha1.AddToScheme(sch)
 
 	config, err := controllerruntime.GetConfig()
 	if err != nil {
@@ -181,10 +184,21 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.DeviceConfig = deviceConfig
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
 
+	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}
+	mutatingAdmissionVolcano.Decoder = decoder
+	mutatingAdmissionVolcano.Client = hookManager.GetClient()
+	mutatingAdmissionVolcano.DeviceConfig = deviceConfig
+	hookServer.Register("/mutate-volcano", &webhook.Admission{Handler: mutatingAdmissionVolcano})
+
 	validatingAdmission := &dra.ValidatingAdmission{}
 	validatingAdmission.Decoder = decoder
 	validatingAdmission.Client = hookManager.GetClient()
 	hookServer.Register("/validate", &webhook.Admission{Handler: validatingAdmission})
+
+	validatingAdmissionVolcano := &volcano.ValidatingAdmission{}
+	validatingAdmissionVolcano.Decoder = decoder
+	validatingAdmissionVolcano.Client = hookManager.GetClient()
+	hookServer.Register("/validate-volcano", &webhook.Admission{Handler: validatingAdmissionVolcano})
 
 	// blocks until the context is done.
 	if err := hookManager.Start(ctx); err != nil {

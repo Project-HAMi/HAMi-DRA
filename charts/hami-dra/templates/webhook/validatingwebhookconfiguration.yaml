@@ -26,4 +26,26 @@ webhooks:
     sideEffects: None
     timeoutSeconds: 10
     failurePolicy: Ignore
+{{- if .Values.webhook.config.volcano.enabled }}
+  - name: validate-volcano.hami.io
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-dra-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /validate-volcano
+    rules:
+      - apiGroups:
+          - batch.volcano.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - DELETE
+        resources:
+          - jobs
+        scope: '*'
+    sideEffects: None
+    timeoutSeconds: 10
+    failurePolicy: Ignore
+{{- end -}}
 {{- end }}
