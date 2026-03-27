@@ -1,4 +1,8 @@
 {{- if .Values.webhook.config.mutating.enabled }}
+{{- $excludedNamespaces := .Values.webhook.config.scope.excludedNamespaces | default (list) }}
+{{- if .Values.webhook.config.scope.excludeReleaseNamespace }}
+{{- $excludedNamespaces = concat $excludedNamespaces (list .Release.Namespace) }}
+{{- end }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
@@ -25,6 +29,16 @@ webhooks:
         scope: '*'
     sideEffects: None
     timeoutSeconds: 10
+{{- if .Values.webhook.config.scope.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+{{- range $ns := $excludedNamespaces }}
+            - {{ $ns | quote }}
+{{- end }}
+{{- end }}
 {{- if .Values.webhook.config.volcano.enabled }}
   - name: mutate-volcano.hami.io
     admissionReviewVersions: ["v1"]
@@ -45,5 +59,15 @@ webhooks:
         scope: '*'
     sideEffects: None
     timeoutSeconds: 10
+{{- if .Values.webhook.config.scope.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+{{- range $ns := $excludedNamespaces }}
+            - {{ $ns | quote }}
+{{- end }}
+{{- end }}
 {{- end -}}
 {{- end }}

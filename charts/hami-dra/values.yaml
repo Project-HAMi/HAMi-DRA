@@ -80,6 +80,13 @@ webhook:
       enabled: true
     validating:
       enabled: true
+    scope:
+      enabled: true
+      # Always exclude the namespace where this chart is installed.
+      excludeReleaseNamespace: true
+      # Additional namespaces to exclude from webhook effects.
+      excludedNamespaces:
+        - kube-system
     volcano: 
       enabled: true
 
