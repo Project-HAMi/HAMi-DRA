@@ -74,6 +74,12 @@ webhook:
   args:
     webhookName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook
     secretName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook-tls
+  dra:
+    # Leave empty to auto-select:
+    # - fake driver values when fake=true and nvidia=false
+    # - nvidia defaults otherwise
+    deviceClassName: ""
+    driverName: ""
   # Webhook configuration
   config:
     mutating:
@@ -173,3 +179,35 @@ drivers:
       ##   - myRegistryKeySecretName
       ##
       pullSecrets: []
+  fake:
+    enabled: false
+    deviceClassName: fake-gpu.project-hami.io
+    image:
+      registry: ghcr.io
+      repository: project-hami/hami-dra-fake-driver
+      tag: "v0.1.0"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    nodeSelector: {}
+    tolerations:
+      - operator: Exists
+    affinity: {}
+    driverName: fake.dra.hami.io
+    plugin:
+      kubeletRegistrarDirectoryPath: /var/lib/kubelet/plugins_registry
+      kubeletPluginsDirectoryPath: /var/lib/kubelet/plugins
+    configMap:
+      # If set, use an existing ConfigMap instead of creating one from this chart.
+      existingName: ""
+      name: ""
+      key: config.yaml
+      # Optional inline override. When empty, the chart renders a built-in default:
+      # 8 fake NVIDIA A100-SXM4-80GB devices on every node.
+      inlineData: ""

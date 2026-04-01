@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fake DRA ConfigMap 生成器</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Fake DRA</p>
+        <h1>ConfigMap 生成器</h1>
+        <p class="subtitle">可视化维护多个批量分组和多个节点覆盖。关键字段直出，UUID、minor、PCIe 等非关键项自动生成；需要细调时可直接改原始配置。</p>
+      </div>
+      <div class="hero-actions">
+        <button id="copy-configmap" class="button primary" type="button">复制 ConfigMap</button>
+        <button id="reset-form" class="button" type="button">恢复默认</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel form-panel">
+        <div class="panel-header">
+          <h2>全局配置</h2>
+          <p>这里放 ConfigMap 元信息和全局节点选择，下面可视化增删多个 group 和 node override。</p>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>ConfigMap Namespace</span>
+            <input id="namespace" type="text">
+          </label>
+          <label>
+            <span>ConfigMap Name</span>
+            <input id="name" type="text">
+          </label>
+          <label>
+            <span>Data Key</span>
+            <input id="key" type="text">
+          </label>
+          <label>
+            <span>全局节点选择 Key</span>
+            <input id="node-selector-key" type="text">
+          </label>
+          <label>
+            <span>全局节点选择 Value</span>
+            <input id="node-selector-value" type="text" placeholder="留空表示匹配空值标签">
+          </label>
+        </div>
+
+        <section class="builder-section">
+          <div class="section-header">
+            <div>
+              <h3>批量分组 Groups</h3>
+              <p>每个 group 通过 selector 匹配一批节点，并批量生成一组设备。</p>
+            </div>
+            <button id="add-group" class="button" type="button">新增 Group</button>
+          </div>
+          <div id="groups-list" class="collection-list"></div>
+        </section>
+
+        <section class="builder-section">
+          <div class="section-header">
+            <div>
+              <h3>节点覆盖 Nodes</h3>
+              <p>按节点名精确定义或覆盖设备，同名设备会覆盖 group 里对应字段。</p>
+            </div>
+            <button id="add-node" class="button" type="button">新增 Node</button>
+          </div>
+          <div id="nodes-list" class="collection-list"></div>
+        </section>
+
+        <div class="tips">
+          <div class="tip">
+            <strong>自动生成：</strong>
+            `uuid`、`minor`、`attr.project-hami.io/minor`、`pcieBusID`
+          </div>
+          <div class="tip">
+            <strong>默认保留：</strong>
+            `requestPolicy`、`driverVersion`、CUDA 相关字段
+          </div>
+        </div>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="panel-header">
+          <h2>原始配置</h2>
+          <p>这是 `data.config.yaml` 内容。左侧可视化编辑器会生成它，你也可以直接微调，右侧 ConfigMap 会实时更新。</p>
+        </div>
+        <div class="toolbar">
+          <span id="raw-status" class="status">跟随表单自动生成</span>
+          <button id="regenerate-raw" class="button" type="button">重新根据表单生成</button>
+          <button id="copy-raw" class="button" type="button">复制原始配置</button>
+        </div>
+        <textarea id="raw-config" spellcheck="false"></textarea>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="panel-header">
+          <h2>最终 ConfigMap</h2>
+          <p>可直接 `kubectl apply -f`。</p>
+        </div>
+        <textarea id="configmap-output" readonly spellcheck="false"></textarea>
+      </section>
+    </main>
+  </div>
+
+  <template id="group-card-template">
+    <article class="collection-card">
+      <div class="collection-card-header">
+        <div>
+          <h4 data-role="title">Group</h4>
+          <p data-role="subtitle"></p>
+        </div>
+        <button class="button danger" data-action="remove" type="button">删除</button>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          <span>分组名</span>
+          <input data-field="name" type="text">
+        </label>
+        <label>
+          <span>标签 Key</span>
+          <input data-field="selectorKey" type="text">
+        </label>
+        <label>
+          <span>标签 Value</span>
+          <input data-field="selectorValue" type="text">
+        </label>
+        <label>
+          <span>设备数量</span>
+          <input data-field="deviceCount" type="number" min="1" max="32">
+        </label>
+        <label>
+          <span>设备名前缀</span>
+          <input data-field="deviceNamePrefix" type="text">
+        </label>
+        <label>
+          <span>起始 minor</span>
+          <input data-field="minorStart" type="number" min="0">
+        </label>
+        <label>
+          <span>GPU 型号</span>
+          <input data-field="productName" type="text">
+        </label>
+        <label>
+          <span>显存</span>
+          <input data-field="memory" type="text">
+        </label>
+        <label>
+          <span>核心数</span>
+          <input data-field="cores" type="text">
+        </label>
+      </div>
+
+      <details class="advanced">
+        <summary>高级配置</summary>
+        <div class="form-grid advanced-grid">
+          <label>
+            <span>Architecture</span>
+            <input data-field="architecture" type="text">
+          </label>
+          <label>
+            <span>Brand</span>
+            <input data-field="brand" type="text">
+          </label>
+          <label>
+            <span>Type</span>
+            <input data-field="deviceType" type="text">
+          </label>
+          <label>
+            <span>CUDA Compute Capability</span>
+            <input data-field="cudaComputeCapability" type="text">
+          </label>
+          <label>
+            <span>CUDA Driver Version</span>
+            <input data-field="cudaDriverVersion" type="text">
+          </label>
+          <label>
+            <span>Driver Version</span>
+            <input data-field="driverVersion" type="text">
+          </label>
+          <label>
+            <span>PCIe Root</span>
+            <input data-field="pcieRoot" type="text">
+          </label>
+          <label>
+            <span>PCIe 起始 Bus(16进制)</span>
+            <input data-field="pcieBusStart" type="text">
+          </label>
+          <label class="checkbox">
+            <input data-field="allowMultipleAllocations" type="checkbox">
+            <span>自动启用 `allowMultipleAllocations`</span>
+          </label>
+        </div>
+      </details>
+    </article>
+  </template>
+
+  <template id="node-card-template">
+    <article class="collection-card">
+      <div class="collection-card-header">
+        <div>
+          <h4 data-role="title">Node</h4>
+          <p data-role="subtitle"></p>
+        </div>
+        <button class="button danger" data-action="remove" type="button">删除</button>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          <span>节点名</span>
+          <input data-field="nodeName" type="text">
+        </label>
+        <label>
+          <span>设备数量</span>
+          <input data-field="deviceCount" type="number" min="1" max="32">
+        </label>
+        <label>
+          <span>设备名前缀</span>
+          <input data-field="deviceNamePrefix" type="text">
+        </label>
+        <label>
+          <span>起始 minor</span>
+          <input data-field="minorStart" type="number" min="0">
+        </label>
+        <label>
+          <span>GPU 型号</span>
+          <input data-field="productName" type="text">
+        </label>
+        <label>
+          <span>显存</span>
+          <input data-field="memory" type="text">
+        </label>
+        <label>
+          <span>核心数</span>
+          <input data-field="cores" type="text">
+        </label>
+      </div>
+
+      <details class="advanced">
+        <summary>高级配置</summary>
+        <div class="form-grid advanced-grid">
+          <label>
+            <span>Architecture</span>
+            <input data-field="architecture" type="text">
+          </label>
+          <label>
+            <span>Brand</span>
+            <input data-field="brand" type="text">
+          </label>
+          <label>
+            <span>Type</span>
+            <input data-field="deviceType" type="text">
+          </label>
+          <label>
+            <span>CUDA Compute Capability</span>
+            <input data-field="cudaComputeCapability" type="text">
+          </label>
+          <label>
+            <span>CUDA Driver Version</span>
+            <input data-field="cudaDriverVersion" type="text">
+          </label>
+          <label>
+            <span>Driver Version</span>
+            <input data-field="driverVersion" type="text">
+          </label>
+          <label>
+            <span>PCIe Root</span>
+            <input data-field="pcieRoot" type="text">
+          </label>
+          <label>
+            <span>PCIe 起始 Bus(16进制)</span>
+            <input data-field="pcieBusStart" type="text">
+          </label>
+          <label class="checkbox">
+            <input data-field="allowMultipleAllocations" type="checkbox">
+            <span>自动启用 `allowMultipleAllocations`</span>
+          </label>
+        </div>
+      </details>
+    </article>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

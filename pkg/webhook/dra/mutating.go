@@ -146,6 +146,9 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 
 // buildResourceClaim creates a ResourceClaim with default selectors.
 func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resourceapi.ResourceClaim {
+	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
+	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
+
 	return &resourceapi.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -161,11 +164,11 @@ func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resource
 							Capacity: &resourceapi.CapacityRequirements{
 								Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
 							},
-							DeviceClassName: constants.NvidiaDraDriver,
+							DeviceClassName: deviceClassName,
 							Selectors: []resourceapi.DeviceSelector{
 								{
 									CEL: &resourceapi.CELDeviceSelector{
-										Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, constants.NvidiaDraDriver, constants.NvidiaDeviceType),
+										Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, draDriverName, constants.NvidiaDeviceType),
 									},
 								},
 							},
@@ -190,12 +193,13 @@ func (a *MutatingAdmission) removeResource(container *corev1.Container, resource
 // addAnnotationSelectors adds device selectors based on pod annotations.
 func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod) {
 	exactly := resourceclaim.Spec.Devices.Requests[0].Exactly
+	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
 	if UUIDStr, ok := pod.Annotations[constants.UseUUIDAnnotation]; ok {
 		UUIDs := strings.Split(UUIDStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].uuid in ["%s"]`, constants.NvidiaDraDriver, strings.Join(UUIDs, `","`)),
+				Expression: fmt.Sprintf(`device.attributes["%s"].uuid in ["%s"]`, draDriverName, strings.Join(UUIDs, `","`)),
 			},
 		})
 	}
@@ -203,7 +207,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		noUUIDs := strings.Split(noUUIDStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].uuid not in ["%s"]`, constants.NvidiaDraDriver, strings.Join(noUUIDs, `","`)),
+				Expression: fmt.Sprintf(`device.attributes["%s"].uuid not in ["%s"]`, draDriverName, strings.Join(noUUIDs, `","`)),
 			},
 		})
 	}
@@ -212,7 +216,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		useTypes := strings.Split(useTypeStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].productName in ["%s"]`, constants.NvidiaDraDriver, strings.Join(useTypes, `","`)),
+				Expression: fmt.Sprintf(`device.attributes["%s"].productName in ["%s"]`, draDriverName, strings.Join(useTypes, `","`)),
 			},
 		})
 	}
@@ -221,7 +225,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		noUseTypes := strings.Split(noUseTypeStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].productName not in ["%s"]`, constants.NvidiaDraDriver, strings.Join(noUseTypes, `","`)),
+				Expression: fmt.Sprintf(`device.attributes["%s"].productName not in ["%s"]`, draDriverName, strings.Join(noUseTypes, `","`)),
 			},
 		})
 	}

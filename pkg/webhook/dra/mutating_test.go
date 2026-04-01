@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	"github.com/stretchr/testify/assert"
 )
@@ -171,4 +172,23 @@ func TestAddAnnotationSelectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
+	admission := &MutatingAdmission{
+		DeviceConfig: &config.NvidiaConfig{
+			DeviceClassName: "fake-gpu.project-hami.io",
+			DraDriverName:   "fake.dra.hami.io",
+		},
+	}
+
+	claim := admission.buildResourceClaim("test-claim", "default")
+	exactly := claim.Spec.Devices.Requests[0].Exactly
+
+	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
+	assert.Len(t, exactly.Selectors, 1)
+	assert.Equal(t,
+		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
+		exactly.Selectors[0].CEL.Expression,
+	)
 }

@@ -1,5 +1,5 @@
 # Build the monitor binary
-FROM golang:1.24.0 AS builder
+FROM golang:1.25.0 AS builder
 
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0

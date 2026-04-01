@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -66,7 +66,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 			needPatch = true
 			rctNameList = append(rctNameList, rctName)
 			task.Template.Spec.ResourceClaims = append(task.Template.Spec.ResourceClaims, corev1.PodResourceClaim{
-				Name:              rctName,
+				Name:                      rctName,
 				ResourceClaimTemplateName: &rctName,
 			})
 		}
@@ -153,6 +153,9 @@ func (a *MutatingAdmission) handelContainerTemplate(ctx context.Context, contain
 }
 
 func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *resourceapi.ResourceClaimTemplate {
+	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
+	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
+
 	return &resourceapi.ResourceClaimTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -169,11 +172,11 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 								Capacity: &resourceapi.CapacityRequirements{
 									Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
 								},
-								DeviceClassName: constants.NvidiaDraDriver,
+								DeviceClassName: deviceClassName,
 								Selectors: []resourceapi.DeviceSelector{
 									{
 										CEL: &resourceapi.CELDeviceSelector{
-											Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, constants.NvidiaDraDriver, constants.NvidiaDeviceType),
+											Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, draDriverName, constants.NvidiaDeviceType),
 										},
 									},
 								},

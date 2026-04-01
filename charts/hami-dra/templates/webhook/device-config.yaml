@@ -17,6 +17,8 @@ data:
       resourceMemoryPercentageName: {{ .Values.resourceMemPercentage }}
       resourceCoreName: {{ .Values.resourceCores }}
       resourcePriorityName: {{ .Values.resourcePriority }}
+      deviceClassName: {{ include "hami.dra.webhook.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.webhook.driverName" . }}
       overwriteEnv: false
       defaultMemory: 0
       defaultCores: 0

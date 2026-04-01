@@ -15,7 +15,7 @@ endif
 
 REGISTRY_REPO?="ghcr.io/projecthami"
 
-.PHONY: build build-monitor docker-build docker-build-monitor test clean run run-monitor license license-check fmt lint
+.PHONY: build build-monitor build-fake-driver docker-build docker-build-monitor docker-build-fake-driver test clean run run-monitor run-fake-driver license license-check fmt lint
 
 # Build the webhook binary
 build:
@@ -25,8 +25,12 @@ build:
 build-monitor:
 	go build -o bin/monitor cmd/monitor/main.go
 
+# Build the fake driver binary
+build-fake-driver:
+	go build -o bin/fake-driver ./cmd/fake-driver
+
 # Build docker images
-docker-build: docker-build-webhook docker-build-monitor
+docker-build: docker-build-webhook docker-build-monitor docker-build-fake-driver
 
 # Build webhook docker images
 .PHONY: docker-build-webhook
@@ -55,6 +59,21 @@ docker-build-monitor:
 			--build-arg LDFLAGS=$(LDFLAGS) \
 			--tag $(REGISTRY_REPO)/hami-dra-monitor:latest  \
 			-f ./docker/hami-dra-monitor/Dockerfile \
+			--load \
+			.
+
+# Build fake driver docker image
+.PHONY: docker-build-fake-driver
+docker-build-fake-driver:
+	echo "Building hami-dra-fake-driver for arch = $(BUILD_ARCH)"
+	export DOCKER_CLI_EXPERIMENTAL=enabled ;\
+	! ( docker buildx ls | grep hami-dra-fake-driver-multi-platform-builder ) && docker buildx create --use --platform=$(BUILD_ARCH) --name hami-dra-fake-driver-multi-platform-builder --driver-opt image=docker.io/moby/buildkit:buildx-stable-1 ;\
+	docker buildx build \
+			--builder hami-dra-fake-driver-multi-platform-builder \
+			--platform $(BUILD_ARCH) \
+			--build-arg LDFLAGS=$(LDFLAGS) \
+			--tag $(REGISTRY_REPO)/hami-dra-fake-driver:latest  \
+			-f ./docker/hami-dra-fake-driver/Dockerfile \
 			--load \
 			.
 
@@ -88,7 +107,7 @@ lint:
 # Clean build artifacts
 clean:
 	rm -rf bin/
-	rm -f webhook monitor
+	rm -f webhook monitor fake-driver
 
 # Run webhook locally (requires kubeconfig)
 run: build
@@ -104,6 +123,14 @@ run-monitor: build-monitor
 		--kubeconfig=$$HOME/.kube/config \
 		--metrics-bind-address=:8080 \
 		--health-probe-bind-address=:8000
+
+# Run fake driver locally (requires kubeconfig and an existing ConfigMap)
+run-fake-driver: build-fake-driver
+	./bin/fake-driver \
+		--kubeconfig=$$HOME/.kube/config \
+		--node-name=$${NODE_NAME} \
+		--configmap-name=$${CONFIGMAP_NAME} \
+		--configmap-namespace=$${CONFIGMAP_NAMESPACE:-default}
 
 # Generate certificates for local development
 cert:

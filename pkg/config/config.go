@@ -101,6 +101,8 @@ type NvidiaConfig struct {
 	ResourceCoreName             string `yaml:"resourceCoreName"`
 	ResourceMemoryPercentageName string `yaml:"resourceMemoryPercentageName"`
 	ResourcePriority             string `yaml:"resourcePriorityName"`
+	DeviceClassName              string `yaml:"deviceClassName"`
+	DraDriverName                string `yaml:"draDriverName"`
 	OverwriteEnv                 bool   `yaml:"overwriteEnv"`
 	DefaultMemory                int32  `yaml:"defaultMemory"`
 	DefaultCores                 int32  `yaml:"defaultCores"`
@@ -112,6 +114,20 @@ type NvidiaConfig struct {
 	GPUCorePolicy GPUCoreUtilizationPolicy `yaml:"gpuCorePolicy"`
 	// RuntimeClassName is the name of the runtime class to be added to pod.spec.runtimeClassName
 	RuntimeClassName string `yaml:"runtimeClassName"`
+}
+
+func (c *NvidiaConfig) EffectiveDeviceClassName() string {
+	if c != nil && c.DeviceClassName != "" {
+		return c.DeviceClassName
+	}
+	return "hami-core-gpu.project-hami.io"
+}
+
+func (c *NvidiaConfig) EffectiveDraDriverName() string {
+	if c != nil && c.DraDriverName != "" {
+		return c.DraDriverName
+	}
+	return "hami-core-gpu.project-hami.io"
 }
 
 // These configs can be sepecified for each node by using Nodeconfig.

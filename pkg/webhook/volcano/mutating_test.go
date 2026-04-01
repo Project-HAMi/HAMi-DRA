@@ -37,46 +37,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-/* vcjob-quickstart.yaml
-apiVersion: batch.volcano.sh/v1alpha1
-kind: Job
-metadata:
-  name: quickstart-job
-spec:
-  minAvailable: 3
-  schedulerName: volcano
-  # If you omit the 'queue' field, the 'default' queue will be used.
-  # queue: default
-  policies:
-    # If a pod fails (e.g., due to an application error), restart the entire job.
-    - event: PodFailed
-      action: RestartJob
-  tasks:
-    - replicas: 3
-      name: completion-task
-      policies:
-      # When this specific task completes successfully, mark the entire job as Complete.
-      - event: TaskCompleted
-        action: CompleteJob
-      template:
-        spec:
-          containers:
-            - command:
-              - sh
-              - -c
-              - 'echo "Job is running and will complete!"; sleep 100; echo "Job done!"'
-              image: busybox:latest
-              name: busybox-container
-              resources:
-                requests:
-                  cpu: 1
-                  nvidia.com/gpumem: 1000
-                limits:
-                  cpu: 1
-                  nvidia.com/gpumem: 1000
-          restartPolicy: Never
-*/
-
 var quickstartJob = &vcv1alpha1.Job{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "quickstart-job",
@@ -110,12 +70,12 @@ var quickstartJob = &vcv1alpha1.Job{
 								Command: []string{"sh", "-c", `echo "Job is running and will complete!"; sleep 100; echo "Job done!"`},
 								Resources: corev1.ResourceRequirements{
 									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:                    resource.MustParse("1"),
+										corev1.ResourceCPU:                       resource.MustParse("1"),
 										corev1.ResourceName("nvidia.com/gpu"):    resource.MustParse("1"),
 										corev1.ResourceName("nvidia.com/gpumem"): resource.MustParse("1000"),
 									},
 									Limits: corev1.ResourceList{
-										corev1.ResourceCPU:                    resource.MustParse("1"),
+										corev1.ResourceCPU:                       resource.MustParse("1"),
 										corev1.ResourceName("nvidia.com/gpu"):    resource.MustParse("1"),
 										corev1.ResourceName("nvidia.com/gpumem"): resource.MustParse("1000"),
 									},
@@ -152,7 +112,7 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 		{
 			name:        "quickstart-job from vcjob-quickstart.yaml",
 			job:         quickstartJob.DeepCopy(),
-			wantPatched: true, 
+			wantPatched: true,
 		},
 	}
 
@@ -190,4 +150,23 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
+	admission := &MutatingAdmission{
+		DeviceConfig: &config.NvidiaConfig{
+			DeviceClassName: "fake-gpu.project-hami.io",
+			DraDriverName:   "fake.dra.hami.io",
+		},
+	}
+
+	template := admission.buildResourceClaimTemplate("test-template", "default")
+	exactly := template.Spec.Spec.Devices.Requests[0].Exactly
+
+	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
+	assert.Len(t, exactly.Selectors, 1)
+	assert.Equal(t,
+		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
+		exactly.Selectors[0].CEL.Expression,
+	)
 }
