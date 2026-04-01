@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package utils provides shared helpers used by multiple components.
 package utils
 
 import (

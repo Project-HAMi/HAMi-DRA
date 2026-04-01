@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
 package featuregates
 
 import (
@@ -34,11 +33,10 @@ const (
 	GPUSchedulerPolicyByDeviceConstraint featuregate.Feature = "GPUSchedulerPolicyByDeviceConstraint"
 )
 
-
 // defaultFeatureGates contains the default settings for all project-specific feature gates.
 // These will be registered with the standard Kubernetes feature gate system.
 var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
-		GPUSchedulerPolicyByDeviceConstraint: {
+	GPUSchedulerPolicyByDeviceConstraint: {
 		{
 			Default:    false,
 			PreRelease: featuregate.Alpha,
@@ -56,7 +54,7 @@ var (
 // the set of all feature gates and their values.
 // It contains both project-specific feature gates and standard Kubernetes logging feature gates.
 func FeatureGates() featuregate.MutableVersionedFeatureGate {
-	proVer:= version.Get()
+	proVer := version.Get()
 	relVer, err := version.ParseGitVersion(proVer.GitVersion)
 	if err != nil {
 		v := utilversion.MajorMinor(0, 0)

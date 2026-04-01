@@ -11,7 +11,7 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: auto
+      GOTOOLCHAIN: go1.25.0+auto
     
     steps:
       - name: Checkout repository
@@ -30,7 +30,7 @@ jobs:
         run: make test
 
       - name: Run tests with coverage
-        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+        run: make test-coverage
 
       - name: Upload coverage to Codecov
         if: github.event_name == 'pull_request'
@@ -45,7 +45,7 @@ jobs:
     name: Run Linter
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: auto
+      GOTOOLCHAIN: go1.25.0+auto
     
     steps:
       - name: Checkout repository
@@ -58,10 +58,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
+        run: make lint
 
   helm-template:
     name: Validate Helm Chart

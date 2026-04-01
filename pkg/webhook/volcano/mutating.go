@@ -1,3 +1,4 @@
+// Package volcano contains webhook logic for Volcano jobs.
 /*
 Copyright 2025 The HAMi Authors.
 

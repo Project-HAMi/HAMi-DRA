@@ -40,7 +40,7 @@ type ValidatingAdmission struct {
 // Check if our ValidatingAdmission implements necessary interface
 var _ admission.Handler = &ValidatingAdmission{}
 
-// This is temporary solution to delete ResourceClaim when Pod is deleted. And it will be replaced in the future.
+// Handle deletes the ResourceClaim when a DRA-managed Volcano job is deleted.
 func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
 	job := &vcv1alpha1.Job{}
 
@@ -72,7 +72,7 @@ func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request)
 func getResourceClaimName(job *vcv1alpha1.Job) []string {
 	resourceClaimNameList := []string{}
 	for _, task := range job.Spec.Tasks {
-		for _, resourceClaim := range task.Template.Spec.ResourceClaims{
+		for _, resourceClaim := range task.Template.Spec.ResourceClaims {
 			resourceClaimNameList = append(resourceClaimNameList, resourceClaim.Name)
 		}
 	}

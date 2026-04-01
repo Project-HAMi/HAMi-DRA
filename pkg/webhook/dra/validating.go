@@ -40,7 +40,7 @@ type ValidatingAdmission struct {
 // Check if our ValidatingAdmission implements necessary interface
 var _ admission.Handler = &ValidatingAdmission{}
 
-// This is temporary solution to delete ResourceClaim when Pod is deleted. And it will be replaced in the future.
+// Handle deletes the ResourceClaim when a DRA-managed Pod is deleted.
 func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
 	pod := &corev1.Pod{}
 

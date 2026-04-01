@@ -36,7 +36,7 @@ func TestNewHandlerServesDefaultsAndIndex(t *testing.T) {
 	if indexResp.Code != http.StatusOK {
 		t.Fatalf("expected index status 200, got %d", indexResp.Code)
 	}
-	if body := indexResp.Body.String(); !strings.Contains(body, "fake DRA ConfigMap") {
+	if body := indexResp.Body.String(); !strings.Contains(body, "Fake DRA ConfigMap Generator") {
 		t.Fatalf("expected index page content, got %q", body)
 	}
 

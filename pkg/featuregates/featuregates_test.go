@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
 package featuregates
 
 import (
@@ -45,7 +44,7 @@ func TestKnownFeatures(t *testing.T) {
 	// Mock the featureGates singleton with a version that supports the feature
 	original := featureGates
 	defer func() { featureGates = original }()
-	
+
 	// Use v0.2.0 to ensure GPUSchedulerPolicyByDeviceConstraint (introduced in 0.2) is included
 	// utilversion.MustParseGeneric is not available in all k8s versions, using ParseGeneric
 	v, err := utilversion.ParseGeneric("v0.2.0")
@@ -59,7 +58,7 @@ func TestKnownFeatures(t *testing.T) {
 	// We look for the feature name. The exact string format might vary slightly
 	// but should contain the feature name.
 	expected := string(GPUSchedulerPolicyByDeviceConstraint)
-	
+
 	for _, f := range features {
 		if strings.Contains(f, expected) {
 			found = true
@@ -76,7 +75,7 @@ func TestAddFlags(t *testing.T) {
 	// Mock the featureGates singleton with a version that supports the feature
 	original := featureGates
 	defer func() { featureGates = original }()
-	
+
 	v, err := utilversion.ParseGeneric("v0.2.0")
 	if err != nil {
 		t.Fatalf("Failed to parse version: %v", err)
@@ -94,7 +93,7 @@ func TestAddFlags(t *testing.T) {
 	if f.Name != "feature-gates" {
 		t.Errorf("Expected flag name 'feature-gates', got %s", f.Name)
 	}
-	
+
 	usage := f.Usage
 	if !strings.Contains(usage, string(GPUSchedulerPolicyByDeviceConstraint)) {
 		t.Errorf("Flag usage should contain GPUSchedulerPolicy, got: %s", usage)

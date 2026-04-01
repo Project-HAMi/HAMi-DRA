@@ -1,6 +1,11 @@
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BUILD_ARCH ?= linux/$(GOARCH)
+GOTOOLCHAIN ?= go1.25.0+auto
+GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_ARGS ?= --timeout=5m
+
+export GOTOOLCHAIN
 
 ifeq ($(BUILD_ARM),true)
 ifneq ($(GOARCH),arm64)
@@ -15,7 +20,7 @@ endif
 
 REGISTRY_REPO?="ghcr.io/projecthami"
 
-.PHONY: build build-monitor build-fake-driver docker-build docker-build-monitor docker-build-fake-driver test clean run run-monitor run-fake-driver license license-check fmt lint
+.PHONY: build build-monitor build-fake-driver docker-build docker-build-monitor docker-build-fake-driver test test-quick test-coverage clean run run-monitor run-fake-driver license license-check fmt lint
 
 # Build the webhook binary
 build:
@@ -85,6 +90,10 @@ test:
 test-quick:
 	go test ./...
 
+# Run tests with coverage (matches CI coverage step)
+test-coverage:
+	go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
 # Format Go code
 fmt:
 	@echo "Formatting Go code..."
@@ -97,12 +106,7 @@ fmt:
 # Lint Go code
 lint:
 	@echo "Linting Go code..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
-		exit 1; \
-	fi
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run $(GOLANGCI_LINT_ARGS)
 
 # Clean build artifacts
 clean:

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package options defines monitor command options and defaults.
 package options
 
 import (

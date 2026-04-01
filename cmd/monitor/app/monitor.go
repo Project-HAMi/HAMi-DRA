@@ -91,9 +91,9 @@ and exposes them via Prometheus metrics endpoint.`,
 		return nil
 	})
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s\n\n", cmd.Long)
-		fmt.Fprintf(cmd.OutOrStdout(), "Usage:\n  %s\n\n", cmd.UseLine())
-		fmt.Fprintf(cmd.OutOrStdout(), "Flags:\n%s\n", cmd.Flags().FlagUsages())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n\n", cmd.Long)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Usage:\n  %s\n\n", cmd.UseLine())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Flags:\n%s\n", cmd.Flags().FlagUsages())
 	})
 	return cmd
 }

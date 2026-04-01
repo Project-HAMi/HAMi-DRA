@@ -1,15 +1,15 @@
-# fake DRA driver
+# Fake DRA Driver
 
-目标：做一个尽量精简的 kubelet plugin，只在启动时读取一次 ConfigMap，为当前节点发布 fake 设备
+Goal: provide a minimal kubelet plugin that reads a ConfigMap once at startup and publishes fake devices for the current node.
 
-## 支持能力
-1. `nodeSelector`：控制哪些节点启用这份配置。
-2. `groups[].selector`：按节点标签批量下发设备。
-3. `nodes.<nodeName>.devices`：按节点名精确定义设备，且覆盖同名批量设备。
-4. 提供一个独立的 ConfigMap 生成页面命令。
+## Capabilities
+1. `nodeSelector`: controls which nodes use the configuration.
+2. `groups[].selector`: defines device batches using node label selectors.
+3. `nodes.<nodeName>.devices`: defines per-node devices explicitly and overrides batch devices with the same name.
+4. Includes a standalone ConfigMap generator web UI command.
 
-## 配置格式
-配置文件直接使用完整的 `ConfigMap` YAML，驱动实际读取 `data.config.yaml`：
+## Configuration Format
+The configuration is a full `ConfigMap` YAML. The driver reads `data.config.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -81,15 +81,15 @@ data:
                 string: worker-1-gpu-1
 ```
 
-说明：
-1. `attributes` 支持 `string`、`int`、`bool`、`version` 四种类型，且每个属性必须只设置一种。
-2. `capacity` 支持 `value`，也支持 `requestPolicy.default`、`requestPolicy.validValues`、`requestPolicy.validRange`。
-3. 如果某个 capacity 配置了 `requestPolicy`，驱动会自动为该设备开启 `allowMultipleAllocations`；也可以显式配置。
-4. 同名设备优先级：`nodes` 覆盖 `groups`。
-5. 当前版本不监听 ConfigMap 变化，修改后需重启插件。
+Notes:
+1. `attributes` supports `string`, `int`, `bool`, and `version`. Each attribute must define exactly one type.
+2. `capacity` supports `value`, `requestPolicy.default`, `requestPolicy.validValues`, and `requestPolicy.validRange`.
+3. If a capacity entry defines `requestPolicy`, the driver automatically enables `allowMultipleAllocations` for that device. You can also set it explicitly.
+4. Device precedence is `nodes` over `groups` for devices with the same name.
+5. The current version does not watch for ConfigMap changes. Restart the plugin after updating the ConfigMap.
 
-## 启动参数
-最小必填参数：
+## Startup Flags
+Minimum required flags:
 
 ```bash
 fake-driver \
@@ -97,29 +97,30 @@ fake-driver \
   --configmap-name=fake-dra-config
 ```
 
-常用可选参数：
-1. `--driver-name`：默认 `fake.dra.hami.io`
-2. `--configmap-namespace`：默认 `default`
-3. `--configmap-key`：默认 `config.yaml`
-4. `--kubeconfig`：集群外调试时使用
+Common optional flags:
+1. `--driver-name`: defaults to `fake.dra.hami.io`
+2. `--configmap-namespace`: defaults to `default`
+3. `--configmap-key`: defaults to `config.yaml`
+4. `--kubeconfig`: used for out-of-cluster debugging
 
-## 网页
+## Web UI
 
 ```bash
 go run ./cmd/fake-confgen --listen-address=:8080
 ```
 
-然后访问 `http://127.0.0.1:8080/`。页面输出的是完整 `ConfigMap` YAML，不做持久化。
+Then open `http://127.0.0.1:8080/`. The page generates a full `ConfigMap` YAML and does not persist any state.
 
-页面使用方式：
-1. 优先填写关键配置：`namespace/name`、节点 selector、分组 selector、设备数量、型号、显存、核心数。
-2. 非关键字段如 `uuid`、`minor`、`attr.project-hami.io/minor`、`pcieBusID` 会自动生成。
-3. 页面支持可视化增删多个 `groups` 和多个 `nodes` 覆盖项。
-4. 高级字段默认已给出，可按需展开修改。
-5. 中间栏可直接微调 `data.config.yaml`，右侧会实时生成最终 `ConfigMap`。
+How to use the page:
+1. Fill the important fields first: `namespace/name`, node selector, group selector, device count, product name, memory, and cores.
+2. Non-critical fields such as `uuid`, `minor`, `attr.project-hami.io/minor`, and `pcieBusID` are generated automatically.
+3. The page supports visual add/remove for multiple `groups` and multiple `nodes` overrides.
+4. Advanced fields are pre-filled and can be expanded only when needed.
+5. The middle panel allows direct edits to `data.config.yaml`, and the final `ConfigMap` on the right updates in real time.
+6. The UI supports English and Simplified Chinese switching.
 
-## Helm 集成
-Chart 已支持 fake kubelet plugin，可通过如下方式启用：
+## Helm Integration
+The chart already supports the fake kubelet plugin. Enable it like this:
 
 ```bash
 helm upgrade --install hami-dra ./charts/hami-dra \
@@ -127,12 +128,12 @@ helm upgrade --install hami-dra ./charts/hami-dra \
   --set drivers.nvidia.enabled=false
 ```
 
-关键 values：
-1. `drivers.fake.image.*`：fake plugin 镜像。
-2. `drivers.fake.driverName`：DRA driver name。
-3. `drivers.fake.deviceClassName`：默认 `fake-gpu.project-hami.io`。
-4. `drivers.fake.configMap.existingName`：引用已有 `ConfigMap`，设置后 chart 不再创建。
-5. `drivers.fake.configMap.name`：可选，自定义 chart 创建的 `ConfigMap` 名称。
-6. `drivers.fake.configMap.key`：默认 `config.yaml`。
-7. 默认情况下，template 会直接渲染一个预制 `ConfigMap`，在所有节点上创建 8 张 `A100-SXM4-80GB` fake 设备。
-8. 如确实需要覆盖默认内容，可使用 `drivers.fake.configMap.inlineData`。
+Important values:
+1. `drivers.fake.image.*`: fake plugin image settings.
+2. `drivers.fake.driverName`: DRA driver name.
+3. `drivers.fake.deviceClassName`: defaults to `fake-gpu.project-hami.io`.
+4. `drivers.fake.configMap.existingName`: use an existing `ConfigMap`; when set, the chart does not create one.
+5. `drivers.fake.configMap.name`: optional custom name for the chart-managed `ConfigMap`.
+6. `drivers.fake.configMap.key`: defaults to `config.yaml`.
+7. By default, the template renders a built-in `ConfigMap` that creates eight `A100-SXM4-80GB` fake devices on every node.
+8. If you need to override the default content, use `drivers.fake.configMap.inlineData`.

@@ -130,7 +130,7 @@ func (c *NvidiaConfig) EffectiveDraDriverName() string {
 	return "hami-core-gpu.project-hami.io"
 }
 
-// These configs can be sepecified for each node by using Nodeconfig.
+// NodeDefaultConfig defines settings that can be specified per node via Nodeconfig.
 type NodeDefaultConfig struct {
 	//nolint:tagalign
 	DeviceSplitCount *uint `yaml:"deviceSplitCount" json:"devicesplitcount"`

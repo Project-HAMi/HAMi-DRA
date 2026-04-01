@@ -1,0 +1,9 @@
+version: "2"
+
+linters:
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -QF1008
+        - -ST1000

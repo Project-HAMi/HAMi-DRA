@@ -53,6 +53,23 @@ h1, h2 {
   flex-wrap: wrap;
 }
 
+.language-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.language-switch select {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  font: inherit;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
