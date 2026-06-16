@@ -22,10 +22,13 @@ mluResourceName: "cambricon.com/vmlu"
 mluResourceMem: "cambricon.com/mlu.smlu.vmemory"
 mluResourceCores: "cambricon.com/mlu.smlu.vcore"
 
-# Hygon DCU Parameters
+# Hygon DCU Parameters (used when deviceVendor=hygon)
 dcuResourceName: "hygon.com/dcunum"
 dcuResourceMem: "hygon.com/dcumem"
 dcuResourceCores: "hygon.com/dcucores"
+
+# Active device vendor for webhook conversion: nvidia | hygon
+deviceVendor: nvidia
 
 # Metax sGPU Parameters
 metaxResourceName: "metax-tech.com/sgpu"
@@ -80,6 +83,8 @@ webhook:
     # - nvidia defaults otherwise
     deviceClassName: ""
     driverName: ""
+    # deviceClassName: dra.hygon.com
+    # driverName: dra.hygon.com
   # Webhook configuration
   config:
     mutating:
@@ -158,6 +163,7 @@ certs:
       clusterIssuerName: ""  # Required when type is "clusterIssuer"
 
 # DRA Drivers configuration
+# DCU: k8s-dcu-dra-driver deployed separately; drivers.dcu.enabled=false avoids duplicate DeviceClass.
 drivers:
   nvidia:
     enabled: true
@@ -217,3 +223,12 @@ drivers:
       # Optional inline override. When empty, the chart renders a built-in default:
       # 8 fake NVIDIA A100-SXM4-80GB devices on every node.
       inlineData: ""
+  dcu:
+    # Set enabled=true only if this chart should create DeviceClass dra.hygon.com.
+    enabled: false
+    deviceClassName: dra.hygon.com
+    driverName: dra.hygon.com
+    # When Pod requests hygon.com/dcucores (percentage), set this to one card's total
+    # compute units from: kubectl get resourceslice -o yaml
+    # Whole-card only (hygon.com/dcunum without dcumem/dcucores) can leave 0.
+    referenceComputeUnits: 0

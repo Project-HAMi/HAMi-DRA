@@ -41,7 +41,7 @@ import (
 type MutatingAdmission struct {
 	Decoder      admission.Decoder
 	Client       client.Client
-	DeviceConfig *config.NvidiaConfig
+	DeviceConfig *config.DRADeviceConfig
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -134,12 +134,11 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 	a.removeResource(container, countResourceName)
 
 	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = coreQty
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = a.DeviceConfig.ConvertCores(coreQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = mem
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = a.DeviceConfig.ConvertMemory(memQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}
 
@@ -157,10 +156,10 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 // If pod is provided, it will be set as the owner for garbage collection.
 func (a *MutatingAdmission) buildResourceClaim(name, namespace string, pod *corev1.Pod) *resourceapi.ResourceClaim {
 	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
 	var ownerRefs []metav1.OwnerReference
-	if pod != nil {
+	// Pod UID is not assigned yet during mutating admission on CREATE.
+	if pod != nil && pod.UID != "" {
 		ownerRef := metav1.NewControllerRef(
 			pod,
 			corev1.SchemeGroupVersion.WithKind("Pod"),
@@ -178,7 +177,7 @@ func (a *MutatingAdmission) buildResourceClaim(name, namespace string, pod *core
 			Devices: resourceapi.DeviceClaim{
 				Requests: []resourceapi.DeviceRequest{
 					{
-						Name: "gpu",
+						Name: a.DeviceConfig.RequestName,
 						Exactly: &resourceapi.ExactDeviceRequest{
 							AllocationMode: resourceapi.DeviceAllocationModeExactCount,
 							Capacity: &resourceapi.CapacityRequirements{
@@ -188,7 +187,7 @@ func (a *MutatingAdmission) buildResourceClaim(name, namespace string, pod *core
 							Selectors: []resourceapi.DeviceSelector{
 								{
 									CEL: &resourceapi.CELDeviceSelector{
-										Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, draDriverName, constants.NvidiaDeviceType),
+										Expression: a.DeviceConfig.TypeSelectorExpression(),
 									},
 								},
 							},
@@ -220,7 +219,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		return
 	}
 
-	if UUIDStr, ok := pod.Annotations[constants.UseUUIDAnnotation]; ok {
+	if UUIDStr, ok := pod.Annotations[a.DeviceConfig.UseUUIDAnnotation]; ok {
 		UUIDs := strings.Split(UUIDStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
@@ -228,7 +227,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 			},
 		})
 	}
-	if noUUIDStr, ok := pod.Annotations[constants.NoUseUUIDAnnotation]; ok {
+	if noUUIDStr, ok := pod.Annotations[a.DeviceConfig.NoUseUUIDAnnotation]; ok {
 		noUUIDs := strings.Split(noUUIDStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
@@ -237,7 +236,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		})
 	}
 
-	if useTypeStr, ok := pod.Annotations[constants.UseTypeAnnotation]; ok {
+	if useTypeStr, ok := pod.Annotations[a.DeviceConfig.UseTypeAnnotation]; ok {
 		useTypes := strings.Split(useTypeStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
@@ -246,7 +245,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		})
 	}
 
-	if noUseTypeStr, ok := pod.Annotations[constants.NoUseTypeAnnotation]; ok {
+	if noUseTypeStr, ok := pod.Annotations[a.DeviceConfig.NoUseTypeAnnotation]; ok {
 		noUseTypes := strings.Split(noUseTypeStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{

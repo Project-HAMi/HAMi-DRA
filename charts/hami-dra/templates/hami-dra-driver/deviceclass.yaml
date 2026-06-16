@@ -23,3 +23,17 @@ spec:
       expression: |-
         device.driver == "{{ .Values.drivers.fake.driverName }}" && device.attributes["{{ .Values.drivers.fake.driverName }}"].type == "hami-gpu"
 {{- end }}
+{{- if .Values.drivers.dcu.enabled }}
+{{- if or .Values.drivers.nvidia.enabled .Values.drivers.fake.enabled }}
+---
+{{- end }}
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: {{ .Values.drivers.dcu.deviceClassName }}
+spec:
+  selectors:
+  - cel:
+      expression: |-
+        device.driver == "{{ .Values.drivers.dcu.driverName }}" && device.attributes["{{ .Values.drivers.dcu.driverName }}"].type == "dcu"
+{{- end }}

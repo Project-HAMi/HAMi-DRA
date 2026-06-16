@@ -33,6 +33,7 @@ spec:
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8000
             - --device-config-file=/device-config.yaml
+            - --device-vendor={{ include "hami.dra.webhook.deviceVendor" . }}
           ports:
             - containerPort: 8443
               name: webhook
