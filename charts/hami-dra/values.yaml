@@ -22,13 +22,17 @@ mluResourceName: "cambricon.com/vmlu"
 mluResourceMem: "cambricon.com/mlu.smlu.vmemory"
 mluResourceCores: "cambricon.com/mlu.smlu.vcore"
 
-# Hygon DCU Parameters (used when deviceVendor=hygon)
+# Hygon DCU parameters (webhook when deviceVendor=hygon)
 dcuResourceName: "hygon.com/dcunum"
 dcuResourceMem: "hygon.com/dcumem"
 dcuResourceCores: "hygon.com/dcucores"
-
-# Active device vendor for webhook conversion: nvidia | hygon
-deviceVendor: nvidia
+dcuDeviceClassName: dra.hygon.com
+dcuDraDriverName: dra.hygon.com
+# When Pod requests hygon.com/dcucores (percentage), set to one card's total
+# compute units from: kubectl get resourceslice -o yaml
+# Whole-card only (hygon.com/dcunum without dcumem/dcucores) can leave 0.
+dcuReferenceComputeUnits: 0
+deviceVendor: nvidia  # nvidia | hygon
 
 # Metax sGPU Parameters
 metaxResourceName: "metax-tech.com/sgpu"
@@ -77,14 +81,6 @@ webhook:
   args:
     webhookName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook
     secretName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook-tls
-  dra:
-    # Leave empty to auto-select:
-    # - fake driver values when fake=true and nvidia=false
-    # - nvidia defaults otherwise
-    deviceClassName: ""
-    driverName: ""
-    # deviceClassName: dra.hygon.com
-    # driverName: dra.hygon.com
   # Webhook configuration
   config:
     mutating:
@@ -163,7 +159,8 @@ certs:
       clusterIssuerName: ""  # Required when type is "clusterIssuer"
 
 # DRA Drivers configuration
-# DCU: k8s-dcu-dra-driver deployed separately; drivers.dcu.enabled=false avoids duplicate DeviceClass.
+# NVIDIA driver is a built-in chart component. Other drivers (fake, dcu) are optional;
+# enable them only when this chart should deploy the driver or create its DeviceClass.
 drivers:
   nvidia:
     enabled: true
@@ -224,11 +221,10 @@ drivers:
       # 8 fake NVIDIA A100-SXM4-80GB devices on every node.
       inlineData: ""
   dcu:
-    # Set enabled=true only if this chart should create DeviceClass dra.hygon.com.
+    # Optional external driver (k8s-dcu-dra-driver). Set enabled=true only if this chart
+    # should create DeviceClass; normally the external driver already creates it.
     enabled: false
-    deviceClassName: dra.hygon.com
-    driverName: dra.hygon.com
-    # When Pod requests hygon.com/dcucores (percentage), set this to one card's total
-    # compute units from: kubectl get resourceslice -o yaml
-    # Whole-card only (hygon.com/dcunum without dcumem/dcucores) can leave 0.
-    referenceComputeUnits: 0
+    # Override DeviceClass/driver name for the optional DeviceClass template.
+    # Leave empty to use dcuDeviceClassName / dcuDraDriverName.
+    deviceClassName: ""
+    driverName: ""
