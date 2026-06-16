@@ -233,7 +233,7 @@ data:
       deviceClassName: {{ include "hami.dra.webhook.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.webhook.driverName" . }}
       requestName: dcu
-      referenceComputeUnits: {{ .Values.drivers.dcu.referenceComputeUnits }}
+      referenceComputeUnits: {{ .Values.dcuReferenceComputeUnits }}
     vendor: {{ include "hami.dra.webhook.deviceVendor" . }}
     metax:
       resourceCountName: "metax-tech.com/gpu"
