@@ -122,12 +122,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		rcName = fmt.Sprintf("%s-%x", rcName[:220], h[:4])
 	}
 
-	var podToOwn *corev1.Pod
-	if pod.Name != "" {
-		podToOwn = pod
-	}
-
-	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace, podToOwn)
+	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
 	resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 	// Remove count resource from container since it's now represented in the ResourceClaim
@@ -154,25 +149,14 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 }
 
 // buildResourceClaim creates a ResourceClaim with default selectors.
-// If pod is provided, it will be set as the owner for garbage collection.
-func (a *MutatingAdmission) buildResourceClaim(name, namespace string, pod *corev1.Pod) *resourceapi.ResourceClaim {
+func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resourceapi.ResourceClaim {
 	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
 	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
-	var ownerRefs []metav1.OwnerReference
-	if pod != nil {
-		ownerRef := metav1.NewControllerRef(
-			pod,
-			corev1.SchemeGroupVersion.WithKind("Pod"),
-		)
-		ownerRefs = []metav1.OwnerReference{*ownerRef}
-	}
-
 	return &resourceapi.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       namespace,
-			OwnerReferences: ownerRefs,
+			Name:      name,
+			Namespace: namespace,
 		},
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{

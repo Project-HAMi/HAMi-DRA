@@ -24,7 +24,6 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -183,7 +182,7 @@ func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 		},
 	}
 
-	claim := admission.buildResourceClaim("test-claim", "default", nil)
+	claim := admission.buildResourceClaim("test-claim", "default")
 	exactly := claim.Spec.Devices.Requests[0].Exactly
 
 	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
@@ -192,29 +191,4 @@ func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
 		exactly.Selectors[0].CEL.Expression,
 	)
-}
-
-func TestBuildResourceClaimWithOwnerReferences(t *testing.T) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "default",
-			UID:       types.UID("pod-uid-123"),
-		},
-	}
-
-	admission := &MutatingAdmission{
-		DeviceConfig: &config.NvidiaConfig{
-			DeviceClassName: "hami-core-gpu.project-hami.io",
-			DraDriverName:   "hami-core-gpu.project-hami.io",
-		},
-	}
-
-	claim := admission.buildResourceClaim("test-claim", "default", pod)
-	// Verify OwnerReference exists
-	assert.Equal(t, 1, len(claim.ObjectMeta.OwnerReferences))
-	assert.Equal(t, "Pod", claim.ObjectMeta.OwnerReferences[0].Kind)
-	assert.Equal(t, "test-pod", claim.ObjectMeta.OwnerReferences[0].Name)
-	assert.Equal(t, types.UID("pod-uid-123"), claim.ObjectMeta.OwnerReferences[0].UID)
-	assert.True(t, *claim.ObjectMeta.OwnerReferences[0].Controller)
 }
