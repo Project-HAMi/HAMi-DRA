@@ -61,7 +61,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		rcName, err := a.handelContainer(ctx, container, pod)
+		rcName, err := a.handleContainer(ctx, container, pod)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
@@ -106,7 +106,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-func (a *MutatingAdmission) handelContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod) (string, error) {
+func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod) (string, error) {
 	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
 	countQty, ok := container.Resources.Limits[countResourceName]
 	if !ok {
@@ -122,12 +122,7 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 		rcName = fmt.Sprintf("%s-%x", rcName[:220], h[:4])
 	}
 
-	var podToOwn *corev1.Pod
-	if pod.Name != "" {
-		podToOwn = pod
-	}
-
-	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace, podToOwn)
+	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
 	resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 	// Remove count resource from container since it's now represented in the ResourceClaim
@@ -153,25 +148,13 @@ func (a *MutatingAdmission) handelContainer(ctx context.Context, container *core
 }
 
 // buildResourceClaim creates a ResourceClaim with default selectors.
-// If pod is provided, it will be set as the owner for garbage collection.
-func (a *MutatingAdmission) buildResourceClaim(name, namespace string, pod *corev1.Pod) *resourceapi.ResourceClaim {
+func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resourceapi.ResourceClaim {
 	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-
-	var ownerRefs []metav1.OwnerReference
-	// Pod UID is not assigned yet during mutating admission on CREATE.
-	if pod != nil && pod.UID != "" {
-		ownerRef := metav1.NewControllerRef(
-			pod,
-			corev1.SchemeGroupVersion.WithKind("Pod"),
-		)
-		ownerRefs = []metav1.OwnerReference{*ownerRef}
-	}
 
 	return &resourceapi.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       namespace,
-			OwnerReferences: ownerRefs,
+			Name:      name,
+			Namespace: namespace,
 		},
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{

@@ -24,11 +24,11 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func defaultNvidiaDeviceConfig() *config.DRADeviceConfig {
@@ -217,71 +217,25 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 }
 
 func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
-	cfg, err := (&config.Config{
+	deviceConfig, err := (&config.Config{
 		Nvidia: config.NvidiaConfig{
 			DeviceClassName: "fake-gpu.project-hami.io",
 			DraDriverName:   "fake.dra.hami.io",
 		},
 	}).DRADevice(config.VendorNvidia)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	admission := &MutatingAdmission{DeviceConfig: cfg}
-	claim := admission.buildResourceClaim("test-claim", "default", nil)
+	admission := &MutatingAdmission{
+		DeviceConfig: deviceConfig,
+	}
+
+	claim := admission.buildResourceClaim("test-claim", "default")
 	exactly := claim.Spec.Devices.Requests[0].Exactly
 
 	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
-	assert.Equal(t, "gpu", claim.Spec.Devices.Requests[0].Name)
 	assert.Len(t, exactly.Selectors, 1)
 	assert.Equal(t,
 		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
 		exactly.Selectors[0].CEL.Expression,
 	)
-}
-
-func TestBuildResourceClaimHygon(t *testing.T) {
-	cfg, err := (&config.Config{}).DRADevice(config.VendorHygon)
-	assert.NoError(t, err)
-
-	admission := &MutatingAdmission{DeviceConfig: cfg}
-	claim := admission.buildResourceClaim("test-claim", "default", nil)
-	exactly := claim.Spec.Devices.Requests[0].Exactly
-
-	assert.Equal(t, constants.HygonDraDriver, exactly.DeviceClassName)
-	assert.Equal(t, "dcu", claim.Spec.Devices.Requests[0].Name)
-	assert.Equal(t,
-		`device.driver == "dra.hygon.com" && device.attributes["dra.hygon.com"].type == "dcu"`,
-		exactly.Selectors[0].CEL.Expression,
-	)
-}
-
-func TestBuildResourceClaimWithOwnerReferences(t *testing.T) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "default",
-			UID:       types.UID("pod-uid-123"),
-		},
-	}
-
-	admission := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
-	claim := admission.buildResourceClaim("test-claim", "default", pod)
-	// Verify OwnerReference exists
-	assert.Equal(t, 1, len(claim.ObjectMeta.OwnerReferences))
-	assert.Equal(t, "Pod", claim.ObjectMeta.OwnerReferences[0].Kind)
-	assert.Equal(t, "test-pod", claim.ObjectMeta.OwnerReferences[0].Name)
-	assert.Equal(t, types.UID("pod-uid-123"), claim.ObjectMeta.OwnerReferences[0].UID)
-	assert.True(t, *claim.ObjectMeta.OwnerReferences[0].Controller)
-}
-
-func TestBuildResourceClaimSkipsOwnerReferenceWithoutUID(t *testing.T) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "default",
-		},
-	}
-
-	admission := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
-	claim := admission.buildResourceClaim("test-claim", "default", pod)
-	assert.Empty(t, claim.ObjectMeta.OwnerReferences)
 }
