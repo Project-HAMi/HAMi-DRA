@@ -121,9 +121,14 @@ func Run(ctx context.Context, opts *options.Options) error {
 		klog.Errorf("Failed to read device config file: %v", err)
 		return err
 	}
-	deviceConfig, err := config.Unmarshal(deviceConfigBytes)
+	deviceConfigFile, err := config.Unmarshal(deviceConfigBytes)
 	if err != nil {
 		klog.Errorf("Failed to unmarshal device config: %v", err)
+		return err
+	}
+	deviceConfig, err := deviceConfigFile.DRADevice(opts.DeviceVendor)
+	if err != nil {
+		klog.Errorf("Failed to resolve DRA device config: %v", err)
 		return err
 	}
 	// Create a new scheme and add default Kubernetes schemes
@@ -192,7 +197,6 @@ func Run(ctx context.Context, opts *options.Options) error {
 
 	validatingAdmission := &dra.ValidatingAdmission{}
 	validatingAdmission.Decoder = decoder
-	validatingAdmission.Client = hookManager.GetClient()
 	hookServer.Register("/validate", &webhook.Admission{Handler: validatingAdmission})
 
 	validatingAdmissionVolcano := &volcano.ValidatingAdmission{}

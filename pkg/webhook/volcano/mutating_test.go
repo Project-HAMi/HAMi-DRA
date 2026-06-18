@@ -98,11 +98,14 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 	decoder := admission.NewDecoder(sch)
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
 
-	deviceConfig := &config.NvidiaConfig{
-		ResourceCountName:  "nvidia.com/gpu",
-		ResourceMemoryName: "nvidia.com/gpumem",
-		ResourceCoreName:   "nvidia.com/gpucores",
-	}
+	deviceConfig, err := (&config.Config{
+		Nvidia: config.NvidiaConfig{
+			ResourceCountName:  "nvidia.com/gpu",
+			ResourceMemoryName: "nvidia.com/gpumem",
+			ResourceCoreName:   "nvidia.com/gpucores",
+		},
+	}).DRADevice(config.VendorNvidia)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name        string
@@ -153,11 +156,16 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 }
 
 func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
-	admission := &MutatingAdmission{
-		DeviceConfig: &config.NvidiaConfig{
+	deviceConfig, err := (&config.Config{
+		Nvidia: config.NvidiaConfig{
 			DeviceClassName: "fake-gpu.project-hami.io",
 			DraDriverName:   "fake.dra.hami.io",
 		},
+	}).DRADevice(config.VendorNvidia)
+	require.NoError(t, err)
+
+	admission := &MutatingAdmission{
+		DeviceConfig: deviceConfig,
 	}
 
 	template := admission.buildResourceClaimTemplate("test-template", "default")

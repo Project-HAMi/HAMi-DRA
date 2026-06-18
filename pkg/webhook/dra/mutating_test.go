@@ -28,7 +28,13 @@ import (
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func defaultNvidiaDeviceConfig() *config.DRADeviceConfig {
+	cfg, _ := (&config.Config{}).DRADevice(config.VendorNvidia)
+	return cfg
+}
 
 func TestAddAnnotationSelectors(t *testing.T) {
 	tests := []struct {
@@ -129,7 +135,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				},
 			}
 
-			admission := &MutatingAdmission{}
+			admission := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
 			claim := &resourceapi.ResourceClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-1",
@@ -174,12 +180,53 @@ func TestAddAnnotationSelectors(t *testing.T) {
 	}
 }
 
+func TestAddAnnotationSelectorsHygon(t *testing.T) {
+	cfg, err := (&config.Config{}).DRADevice(config.VendorHygon)
+	assert.NoError(t, err)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				constants.HygonUseUUIDAnnotation: "DCU-123",
+				constants.HygonUseTypeAnnotation: "K100",
+			},
+		},
+	}
+
+	admission := &MutatingAdmission{DeviceConfig: cfg}
+	claim := &resourceapi.ResourceClaim{
+		Spec: resourceapi.ResourceClaimSpec{
+			Devices: resourceapi.DeviceClaim{
+				Requests: []resourceapi.DeviceRequest{
+					{
+						Name: "dcu",
+						Exactly: &resourceapi.ExactDeviceRequest{
+							Selectors: []resourceapi.DeviceSelector{},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	admission.addAnnotationSelectors(claim, pod)
+	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
+	assert.Len(t, selectors, 2)
+	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["DCU-123"]`, selectors[0].CEL.Expression)
+	assert.Equal(t, `device.attributes["dra.hygon.com"].productName in ["K100"]`, selectors[1].CEL.Expression)
+}
+
 func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
-	admission := &MutatingAdmission{
-		DeviceConfig: &config.NvidiaConfig{
+	deviceConfig, err := (&config.Config{
+		Nvidia: config.NvidiaConfig{
 			DeviceClassName: "fake-gpu.project-hami.io",
 			DraDriverName:   "fake.dra.hami.io",
 		},
+	}).DRADevice(config.VendorNvidia)
+	require.NoError(t, err)
+
+	admission := &MutatingAdmission{
+		DeviceConfig: deviceConfig,
 	}
 
 	claim := admission.buildResourceClaim("test-claim", "default")

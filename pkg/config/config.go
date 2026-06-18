@@ -90,7 +90,27 @@ const (
 )
 
 type Config struct {
+	Vendor string       `yaml:"vendor"`
 	Nvidia NvidiaConfig `yaml:"nvidia"`
+	Hygon  HygonConfig  `yaml:"hygon"`
+}
+
+// HygonConfig holds DCU DRA settings for k8s-dcu-dra-driver (dra.hygon.com).
+type HygonConfig struct {
+	ResourceCountName  string `yaml:"resourceCountName"`
+	ResourceMemoryName string `yaml:"resourceMemoryName"`
+	ResourceCoreName   string `yaml:"resourceCoreName"`
+	DeviceClassName    string `yaml:"deviceClassName"`
+	DraDriverName      string `yaml:"draDriverName"`
+	RequestName        string `yaml:"requestName"`
+
+	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
+	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`
+	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
+	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
+
+	// ReferenceComputeUnits converts hygon.com/dcucores (percentage) to absolute cores for DRA.
+	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
 }
 
 type NvidiaConfig struct {
@@ -174,12 +194,21 @@ type MigTemplate struct {
 	Count  int32  `yaml:"count"`
 }
 
-func Unmarshal(data []byte) (*NvidiaConfig, error) {
+func Unmarshal(data []byte) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
-	return &config.Nvidia, nil
+	return &config, nil
+}
+
+// UnmarshalNvidia is kept for callers that only need the NVIDIA section.
+func UnmarshalNvidia(data []byte) (*NvidiaConfig, error) {
+	cfg, err := Unmarshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg.Nvidia, nil
 }
 
 func Marshal(nvidiaConfig *NvidiaConfig) ([]byte, error) {

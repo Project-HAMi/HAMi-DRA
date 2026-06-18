@@ -40,7 +40,7 @@ import (
 type MutatingAdmission struct {
 	Decoder      admission.Decoder
 	Client       client.Client
-	DeviceConfig *config.NvidiaConfig
+	DeviceConfig *config.DRADeviceConfig
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -60,7 +60,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	for i := range job.Spec.Tasks {
 		task := &job.Spec.Tasks[i]
-		rctName, err := a.handleTask(ctx, task, job)
+		rctName, err := a.handelTask(ctx, task, job)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
@@ -103,10 +103,10 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) (string, error) {
+func (a *MutatingAdmission) handelTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) (string, error) {
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		rctName, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
+		rctName, err := a.handelContainerTemplate(ctx, container, job.Namespace, task.Name)
 		if err != nil {
 			return "", err
 		}
@@ -117,7 +117,7 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	return "", nil
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) (string, error) {
+func (a *MutatingAdmission) handelContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) (string, error) {
 	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
 	countQty, ok := container.Resources.Limits[countResourceName]
 	if !ok {
@@ -138,12 +138,11 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 	a.removeResource(container, countResourceName)
 
 	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = coreQty
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = a.DeviceConfig.ConvertCores(coreQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = mem
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = a.DeviceConfig.ConvertMemory(memQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}
 
@@ -159,7 +158,6 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 
 func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *resourceapi.ResourceClaimTemplate {
 	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
 	return &resourceapi.ResourceClaimTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -171,7 +169,7 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 				Devices: resourceapi.DeviceClaim{
 					Requests: []resourceapi.DeviceRequest{
 						{
-							Name: "gpu",
+							Name: a.DeviceConfig.RequestName,
 							Exactly: &resourceapi.ExactDeviceRequest{
 								AllocationMode: resourceapi.DeviceAllocationModeExactCount,
 								Capacity: &resourceapi.CapacityRequirements{
@@ -181,7 +179,7 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 								Selectors: []resourceapi.DeviceSelector{
 									{
 										CEL: &resourceapi.CELDeviceSelector{
-											Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, draDriverName, constants.NvidiaDeviceType),
+											Expression: a.DeviceConfig.TypeSelectorExpression(),
 										},
 									},
 								},

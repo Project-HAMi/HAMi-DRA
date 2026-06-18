@@ -110,15 +110,29 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 		devices := c.cache.NodeDevices.GetDevices(claim.NodeName)
 		for _, result := range claim.AllocationResults {
 			var device *cache.NodeDevice
-			deviceIdx := "0"
-			for idx, d := range devices {
+			for _, d := range devices {
 				if d.Name == result.DeviceName {
 					device = d
-					deviceIdx = strconv.Itoa(idx)
 					break
 				}
 			}
-			if device == nil {
+
+			deviceName := ""
+			deviceBrand := ""
+			deviceProductName := ""
+			deviceIdx := "0"
+			if device != nil {
+				deviceName = device.Name
+				deviceBrand = device.Brand
+				deviceProductName = device.ProductName
+				for idx, d := range devices {
+					if d.Name == result.DeviceName {
+						deviceIdx = strconv.Itoa(idx)
+						break
+					}
+				}
+			} else {
+				// should not happen
 				klog.Warningf("Device %s not found for claim %s", result.DeviceName, claim.NodeName)
 				continue
 			}
@@ -131,22 +145,22 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					claim.NodeName,
 					device.UUID,
 					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
+					deviceName,
+					deviceBrand,
+					deviceProductName,
 					result.Namespace,
 					podName,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUMemoryAllocatedDesc,
 					prometheus.GaugeValue,
-					float64(result.Memory)/1024/1024,
+					float64(result.Memory)/1024/1024, // convert to MB
 					claim.NodeName,
 					device.UUID,
 					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
+					deviceName,
+					deviceBrand,
+					deviceProductName,
 					result.Namespace,
 					podName,
 				)
