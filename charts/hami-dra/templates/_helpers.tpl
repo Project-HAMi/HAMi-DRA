@@ -88,9 +88,25 @@ groups:
 {{- end }}
 {{- end -}}
 
+{{- define "hami.dra.dcu.deviceClassName" -}}
+{{- if .Values.drivers.dcu.deviceClassName -}}
+{{- .Values.drivers.dcu.deviceClassName -}}
+{{- else -}}
+{{- .Values.dcuDeviceClassName -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hami.dra.dcu.driverName" -}}
+{{- if .Values.drivers.dcu.driverName -}}
+{{- .Values.drivers.dcu.driverName -}}
+{{- else -}}
+{{- .Values.dcuDraDriverName -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "hami.dra.webhook.deviceClassName" -}}
-{{- if .Values.webhook.dra.deviceClassName -}}
-{{- .Values.webhook.dra.deviceClassName -}}
+{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
+{{- .Values.dcuDeviceClassName -}}
 {{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- .Values.drivers.fake.deviceClassName -}}
 {{- else -}}
@@ -99,13 +115,17 @@ groups:
 {{- end -}}
 
 {{- define "hami.dra.webhook.driverName" -}}
-{{- if .Values.webhook.dra.driverName -}}
-{{- .Values.webhook.dra.driverName -}}
+{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
+{{- .Values.dcuDraDriverName -}}
 {{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- .Values.drivers.fake.driverName -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
+{{- end -}}
+
+{{- define "hami.dra.webhook.deviceVendor" -}}
+{{- .Values.deviceVendor | default "nvidia" -}}
 {{- end -}}
 
 {{/*

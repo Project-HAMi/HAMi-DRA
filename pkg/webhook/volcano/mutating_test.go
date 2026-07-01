@@ -33,6 +33,7 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,10 +99,11 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 	decoder := admission.NewDecoder(sch)
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
 
-	deviceConfig := &config.NvidiaConfig{
+	deviceConfig := &config.DRADeviceConfig{
 		ResourceCountName:  "nvidia.com/gpu",
 		ResourceMemoryName: "nvidia.com/gpumem",
 		ResourceCoreName:   "nvidia.com/gpucores",
+		RequestName:        "gpu",
 	}
 
 	tests := []struct {
@@ -154,9 +156,11 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 
 func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 	admission := &MutatingAdmission{
-		DeviceConfig: &config.NvidiaConfig{
+		DeviceConfig: &config.DRADeviceConfig{
 			DeviceClassName: "fake-gpu.project-hami.io",
 			DraDriverName:   "fake.dra.hami.io",
+			RequestName:     "gpu",
+			DeviceType:      constants.NvidiaDeviceType,
 		},
 	}
 

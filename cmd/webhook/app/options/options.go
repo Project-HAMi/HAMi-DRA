@@ -18,6 +18,7 @@ package options
 
 import (
 	"fmt"
+
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/errors"
 )
@@ -62,6 +63,8 @@ type Options struct {
 	HealthProbeBindAddress string
 	// DeviceConfigFile is the path to the device config file.
 	DeviceConfigFile string
+	// DeviceVendor selects which device section in device-config.yaml to use (nvidia or hygon).
+	DeviceVendor string
 }
 
 // NewOptions builds an empty options.
@@ -85,6 +88,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsBindAddress, "metrics-bind-address", ":8080", "The TCP address that the controller should bind to for serving prometheus metrics(e.g. 127.0.0.1:8080, :8080). It can be set to \"0\" to disable the metrics serving.")
 	flags.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", ":8000", "The TCP address that the controller should bind to for serving health probes(e.g. 127.0.0.1:8000, :8000)")
 	flags.StringVar(&o.DeviceConfigFile, "device-config-file", "device-config.yaml", "The path to the device config file.")
+	flags.StringVar(&o.DeviceVendor, "device-vendor", "", "Device vendor for DRA conversion (nvidia or hygon). Overrides vendor in device-config.yaml when set.")
 }
 
 // Validate validates the options and returns aggregated errors.

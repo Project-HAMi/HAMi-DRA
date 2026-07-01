@@ -1,0 +1,39 @@
+# HAMi-DRA Helm values for Hygon DCU + k8s-dcu-dra-driver (dra.hygon.com)
+#
+# Prerequisites:
+# - k8s-dcu-dra-driver already deployed (DeviceClass dra.hygon.com exists)
+# - cert-manager installed in cluster
+# - hami-dra-webhook image built and reachable by all nodes
+#
+# Install:
+#   helm install hami-dra ./charts/hami-dra -n hami-system --create-namespace -f ./charts/hami-dra/dcu-values.yaml
+
+deviceVendor: hygon
+
+# When Pod requests hygon.com/dcucores (percentage), set to one card's total
+# compute units from: kubectl get resourceslice -o yaml
+# Whole-card only (hygon.com/dcunum without dcumem/dcucores) can leave 0.
+dcuReferenceComputeUnits: 0
+
+drivers:
+  nvidia:
+    enabled: false
+  fake:
+    enabled: false
+  dcu:
+    # DeviceClass is created by k8s-dcu-dra-driver; keep false to avoid duplicate.
+    enabled: false
+
+webhook:
+  image:
+    registry: ghcr.io/projecthami
+    repository: hami-dra-webhook
+    tag: dcu
+    pullPolicy: IfNotPresent
+
+monitor:
+  enabled: false
+
+certs:
+  certManager:
+    enabled: true

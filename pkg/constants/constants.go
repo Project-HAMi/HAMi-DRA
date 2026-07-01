@@ -28,6 +28,14 @@ const (
 	NvidiaDraDriver  = "hami-core-gpu.project-hami.io"
 	NvidiaDeviceType = "hami-gpu"
 
+	HygonDraDriver  = "dra.hygon.com"
+	HygonDeviceType = "dcu"
+
+	HygonUseUUIDAnnotation   = "hygon.com/use-gpuuuid"
+	HygonNoUseUUIDAnnotation = "hygon.com/nouse-gpuuuid"
+	HygonUseTypeAnnotation   = "hygon.com/use-dcutype"
+	HygonNoUseTypeAnnotation = "hygon.com/nouse-dcutype"
+
 	DraLabel = "hami.io/dra"
 
 	DeviceAttributeUUID         = "uuid"

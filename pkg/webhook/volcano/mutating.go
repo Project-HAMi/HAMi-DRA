@@ -40,7 +40,7 @@ import (
 type MutatingAdmission struct {
 	Decoder      admission.Decoder
 	Client       client.Client
-	DeviceConfig *config.NvidiaConfig
+	DeviceConfig *config.DRADeviceConfig
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -138,12 +138,11 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 	a.removeResource(container, countResourceName)
 
 	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = coreQty
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = a.DeviceConfig.ConvertCores(coreQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		mem := resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = mem
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = a.DeviceConfig.ConvertMemory(memQty)
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}
 
@@ -159,7 +158,6 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 
 func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *resourceapi.ResourceClaimTemplate {
 	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
 	return &resourceapi.ResourceClaimTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -171,7 +169,7 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 				Devices: resourceapi.DeviceClaim{
 					Requests: []resourceapi.DeviceRequest{
 						{
-							Name: "gpu",
+							Name: a.DeviceConfig.RequestName,
 							Exactly: &resourceapi.ExactDeviceRequest{
 								AllocationMode: resourceapi.DeviceAllocationModeExactCount,
 								Capacity: &resourceapi.CapacityRequirements{
@@ -181,7 +179,7 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 								Selectors: []resourceapi.DeviceSelector{
 									{
 										CEL: &resourceapi.CELDeviceSelector{
-											Expression: fmt.Sprintf(`device.attributes["%s"].type == "%s"`, draDriverName, constants.NvidiaDeviceType),
+											Expression: a.DeviceConfig.TypeSelectorExpression(),
 										},
 									},
 								},
