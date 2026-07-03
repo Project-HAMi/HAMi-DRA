@@ -26,7 +26,7 @@ drivers:
 
 webhook:
   image:
-    registry: ghcr.io/projecthami
+    registry: ghcr.io/project-hami
     repository: hami-dra-webhook
     tag: dcu
     pullPolicy: IfNotPresent

@@ -54,7 +54,7 @@ webhook:
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-webhook
-    tag: "v0.2.0"
+    tag: "v0.2.1"
     ## Specify a imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
@@ -104,7 +104,7 @@ monitor:
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-monitor
-    tag: "v0.2.0"
+    tag: "v0.2.1"
     ## Specify a imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
