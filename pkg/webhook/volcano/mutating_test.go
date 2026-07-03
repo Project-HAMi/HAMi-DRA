@@ -154,6 +154,55 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 	}
 }
 
+func TestHandleTaskProcessesAllContainers(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+
+	admission := &MutatingAdmission{
+		Client: fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName:  "nvidia.com/gpu",
+			ResourceMemoryName: "nvidia.com/gpumem",
+			ResourceCoreName:   "nvidia.com/gpucores",
+			RequestName:        "gpu",
+		},
+	}
+
+	gpuResources := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("1"),
+		},
+	}
+	task := &vcv1alpha1.TaskSpec{
+		Name: "multi-gpu-task",
+		Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "gpu-one", Resources: *gpuResources.DeepCopy()},
+					{Name: "cpu-only"},
+					{Name: "gpu-two", Resources: *gpuResources.DeepCopy()},
+				},
+			},
+		},
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "multi", Namespace: "default"}}
+
+	rctNames, err := admission.handleTask(context.Background(), task, job)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"default-multi-gpu-task-gpu-one", "default-multi-gpu-task-gpu-two"}, rctNames)
+
+	for _, i := range []int{0, 2} {
+		container := task.Template.Spec.Containers[i]
+		assert.NotContains(t, container.Resources.Limits, corev1.ResourceName("nvidia.com/gpu"),
+			"GPU count resource should be removed from container %s", container.Name)
+		require.Len(t, container.Resources.Claims, 1, "container %s should reference a claim", container.Name)
+	}
+	assert.Empty(t, task.Template.Spec.Containers[1].Resources.Claims, "cpu-only container should be untouched")
+}
+
 func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 	admission := &MutatingAdmission{
 		DeviceConfig: &config.DRADeviceConfig{
