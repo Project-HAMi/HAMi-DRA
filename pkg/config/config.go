@@ -114,7 +114,7 @@ type HygonConfig struct {
 }
 
 type NvidiaConfig struct {
-	// These configs are shared and can be overritten by Nodeconfig.
+	// These configs are shared and can be overwritten by Nodeconfig.
 	NodeDefaultConfig            `yaml:",inline"`
 	ResourceCountName            string `yaml:"resourceCountName"`
 	ResourceMemoryName           string `yaml:"resourceMemoryName"`
@@ -134,20 +134,6 @@ type NvidiaConfig struct {
 	GPUCorePolicy GPUCoreUtilizationPolicy `yaml:"gpuCorePolicy"`
 	// RuntimeClassName is the name of the runtime class to be added to pod.spec.runtimeClassName
 	RuntimeClassName string `yaml:"runtimeClassName"`
-}
-
-func (c *NvidiaConfig) EffectiveDeviceClassName() string {
-	if c != nil && c.DeviceClassName != "" {
-		return c.DeviceClassName
-	}
-	return "hami-core-gpu.project-hami.io"
-}
-
-func (c *NvidiaConfig) EffectiveDraDriverName() string {
-	if c != nil && c.DraDriverName != "" {
-		return c.DraDriverName
-	}
-	return "hami-core-gpu.project-hami.io"
 }
 
 // NodeDefaultConfig defines settings that can be specified per node via Nodeconfig.
@@ -172,7 +158,7 @@ type FilterDevice struct {
 
 type DevicePluginConfigs struct {
 	Nodeconfig []struct {
-		// These configs is shared and will overrite those in NvidiaConfig.
+		// These configs are shared and will overwrite those in NvidiaConfig.
 		NodeDefaultConfig `json:",inline"`
 		Name              string        `json:"name"`
 		OperatingMode     string        `json:"operatingmode"`

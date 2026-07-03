@@ -98,7 +98,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 				},
 			})
 			if deletionErr != nil {
-				klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) for request: %s after an error occurs", pod.Namespace, pod.Name, req.Operation)
+				klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) for request: %s after an error occurs", pod.Namespace, rcName, req.Operation)
 			}
 		}
 		return admission.Errored(http.StatusInternalServerError, err)
