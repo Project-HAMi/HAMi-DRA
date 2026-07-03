@@ -42,7 +42,7 @@ func TestNewCache(t *testing.T) {
 	if c.stopCh == nil {
 		t.Error("stopCh should not be nil")
 	}
-	if c.ready {
+	if c.ready.Load() {
 		t.Error("Cache should not be ready initially")
 	}
 }
@@ -144,7 +144,6 @@ func TestCache_onAddSlice(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	nodeName := "test-node"
@@ -183,7 +182,6 @@ func TestCache_onUpdateSlice(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	nodeName := "test-node"
@@ -218,7 +216,6 @@ func TestCache_onDeleteSlice(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	nodeName := "test-node"
@@ -253,7 +250,6 @@ func TestCache_onAddSlice_NoNodeName(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// Create slice without node name
@@ -299,7 +295,6 @@ func TestCache_onAddClaim_NoAllocation(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// Create claim without allocation
@@ -340,7 +335,6 @@ func TestCache_onAddClaim_WithAllocation(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// First add a device
@@ -396,7 +390,6 @@ func TestCache_onDeleteClaim(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// First add a device
@@ -451,7 +444,6 @@ func TestCache_onUpdateClaim(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	// First add a device
@@ -486,14 +478,13 @@ func TestCache_IsReady(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),
 		stopCh:      make(chan struct{}),
-		ready:       false,
 	}
 
 	if c.IsReady() {
 		t.Error("Cache should not be ready initially")
 	}
 
-	c.ready = true
+	c.ready.Store(true)
 	if !c.IsReady() {
 		t.Error("Cache should be ready after setting ready to true")
 	}
