@@ -75,16 +75,19 @@ func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quant
 	return resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
 }
 
-func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) resource.Quantity {
+func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quantity, error) {
+	if c.DeviceType == constants.HygonDeviceType && c.ReferenceComputeUnits <= 0 {
+		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/dcucores requests")
+	}
 	if c.ReferenceComputeUnits > 0 {
 		pct := coreQty.Value()
-		absolute := pct * c.ReferenceComputeUnits / 100
+		absolute := (pct*c.ReferenceComputeUnits + 99) / 100
 		if absolute < 1 {
 			absolute = 1
 		}
-		return *resource.NewQuantity(absolute, resource.DecimalSI)
+		return *resource.NewQuantity(absolute, resource.DecimalSI), nil
 	}
-	return coreQty
+	return coreQty, nil
 }
 
 func draDeviceFromNvidia(c *NvidiaConfig) *DRADeviceConfig {

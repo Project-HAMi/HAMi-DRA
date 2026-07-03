@@ -219,10 +219,9 @@ drivers:
       # 8 fake NVIDIA A100-SXM4-80GB devices on every node.
       inlineData: ""
   dcu:
-    # Optional external driver (k8s-dcu-dra-driver). Set enabled=true only if this chart
-    # should create DeviceClass; normally the external driver already creates it.
+    # Reserved; no DCU driver template in this chart. Deploy k8s-dcu-dra-driver separately.
     enabled: false
-    # Override DeviceClass/driver name for the optional DeviceClass template.
+    # Override DeviceClass/driver name in webhook config only.
     # Leave empty to use dcuDeviceClassName / dcuDraDriverName.
     deviceClassName: ""
     driverName: ""

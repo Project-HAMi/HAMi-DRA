@@ -104,6 +104,7 @@ func TestMutatingAdmission_Handle(t *testing.T) {
 		ResourceMemoryName: "nvidia.com/gpumem",
 		ResourceCoreName:   "nvidia.com/gpucores",
 		RequestName:        "gpu",
+		DeviceType:         constants.NvidiaDeviceType,
 	}
 
 	tests := []struct {

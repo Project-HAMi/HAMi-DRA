@@ -230,8 +230,8 @@ data:
       resourceCountName: {{ .Values.dcuResourceName }}
       resourceMemoryName: {{ .Values.dcuResourceMem }}
       resourceCoreName: {{ .Values.dcuResourceCores }}
-      deviceClassName: {{ include "hami.dra.webhook.deviceClassName" . }}
-      draDriverName: {{ include "hami.dra.webhook.driverName" . }}
+      deviceClassName: {{ include "hami.dra.dcu.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.dcu.driverName" . }}
       requestName: dcu
       referenceComputeUnits: {{ .Values.dcuReferenceComputeUnits }}
     vendor: {{ include "hami.dra.webhook.deviceVendor" . }}
