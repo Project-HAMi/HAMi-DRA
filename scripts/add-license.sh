@@ -11,8 +11,8 @@ LICENSE_TEXT=$(cat "$LICENSE_HEADER")
 # Function to check if file has the correct license header (with correct year)
 has_correct_license() {
     local file=$1
-    # Check if file has "Copyright 2025 The HAMi Authors"
-    if head -n 20 "$file" | grep -q "Copyright 2025.*The HAMi Authors"; then
+    # Accept any year so existing headers are not rewritten
+    if head -n 20 "$file" | grep -q "Copyright 20[0-9][0-9].*The HAMi Authors"; then
         return 0
     fi
     return 1
