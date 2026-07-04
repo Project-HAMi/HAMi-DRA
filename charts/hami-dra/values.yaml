@@ -78,9 +78,6 @@ webhook:
       cpu: 100m
       memory: 128Mi
   ## @param nodeSelector controllerManager node labels for pod assignment
-  args:
-    webhookName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook
-    secretName: ""  # Default: {{ .Release.Name }}-hami-dra-webhook-tls
   # Webhook configuration
   config:
     mutating:
