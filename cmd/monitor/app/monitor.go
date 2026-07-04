@@ -36,6 +36,7 @@ import (
 	"github.com/Project-HAMi/HAMi-DRA/pkg/cache"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/metrics"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/version"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/version/sharedcommand"
 )
 
 // NewMonitorCommand creates a *cobra.Command object with default parameters
@@ -83,6 +84,8 @@ and exposes them via Prometheus metrics endpoint.`,
 			return nil
 		},
 	}
+
+	cmd.AddCommand(sharedcommand.NewCmdVersion("monitor"))
 
 	cmd.Flags().AddFlagSet(genericFlagSet)
 	cmd.Flags().AddFlagSet(logsFlagSet)

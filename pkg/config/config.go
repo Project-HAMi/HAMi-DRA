@@ -201,16 +201,3 @@ func Unmarshal(data []byte) (*Config, error) {
 	}
 	return &config, nil
 }
-
-// UnmarshalNvidia is kept for callers that only need the NVIDIA section.
-func UnmarshalNvidia(data []byte) (*NvidiaConfig, error) {
-	cfg, err := Unmarshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return &cfg.Nvidia, nil
-}
-
-func Marshal(nvidiaConfig *NvidiaConfig) ([]byte, error) {
-	return yaml.Marshal(nvidiaConfig)
-}
