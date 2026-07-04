@@ -34,12 +34,21 @@ type Client struct {
 	config *rest.Config
 }
 
-// NewClient creates a new Kubernetes client with the given options.
+// NewClient creates a new Kubernetes client with client-go default rate limits.
 func NewClient() (*Client, error) {
+	return NewClientWithRateLimit(0, 0)
+}
+
+// NewClientWithRateLimit creates a new Kubernetes client with the given QPS
+// and burst. Zero values keep the client-go defaults (QPS 5, burst 10).
+// A negative QPS disables client-side rate limiting entirely.
+func NewClientWithRateLimit(qps float32, burst int) (*Client, error) {
 	restConfig, err := loadKubeConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
+	restConfig.QPS = qps
+	restConfig.Burst = burst
 
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
