@@ -18,7 +18,7 @@ ifneq ($(GOARCH),amd64)
 endif
 endif
 
-REGISTRY_REPO?="ghcr.io/projecthami"
+REGISTRY_REPO?="ghcr.io/project-hami"
 
 .PHONY: build build-monitor build-fake-driver docker-build docker-build-monitor docker-build-fake-driver test test-quick test-coverage clean run run-monitor run-fake-driver license license-check fmt lint
 
