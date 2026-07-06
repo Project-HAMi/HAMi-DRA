@@ -144,7 +144,7 @@ cert:
 license:
 	@if command -v addlicense >/dev/null 2>&1; then \
 		echo "Using addlicense tool..."; \
-		addlicense -c "The HAMi Authors" -l apache -y 2025 -s -f .license-header.txt .; \
+		addlicense -c "The HAMi Authors" -l apache -y 2026 -s -f .license-header.txt .; \
 	else \
 		echo "addlicense not found, using script..."; \
 		echo "To install addlicense: ./scripts/install-addlicense.sh"; \
@@ -154,7 +154,7 @@ license:
 # Check license headers (dry-run with addlicense)
 license-check:
 	@if command -v addlicense >/dev/null 2>&1; then \
-		addlicense -c "The HAMi Authors" -l apache -y 2025 -s -f .license-header.txt -check .; \
+		addlicense -c "The HAMi Authors" -l apache -y 2026 -s -f .license-header.txt -check .; \
 	else \
 		echo "addlicense not found. Install it with: ./scripts/install-addlicense.sh"; \
 		exit 1; \
