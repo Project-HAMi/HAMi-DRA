@@ -123,8 +123,7 @@ run: build
 
 # Run monitor locally (requires kubeconfig)
 run-monitor: build-monitor
-	./bin/monitor \
-		--kubeconfig=$$HOME/.kube/config \
+	KUBECONFIG=$$HOME/.kube/config ./bin/monitor \
 		--metrics-bind-address=:8080 \
 		--health-probe-bind-address=:8000
 
