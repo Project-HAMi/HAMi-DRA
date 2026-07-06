@@ -50,4 +50,3 @@ var (
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
 	)
 )
-

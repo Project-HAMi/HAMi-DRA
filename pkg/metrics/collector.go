@@ -119,7 +119,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				}
 			}
 			if device == nil {
-				klog.Warningf("Device %s not found for claim %s", result.DeviceName, claim.NodeName)
+				klog.Warningf("Device %s not found on node %s", result.DeviceName, claim.NodeName)
 				continue
 			}
 
