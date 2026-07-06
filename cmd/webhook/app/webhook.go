@@ -41,6 +41,7 @@ import (
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/featuregates"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/version"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/version/sharedcommand"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/dra"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/volcano"
 )
@@ -95,6 +96,8 @@ Kubernetes resources.`,
 			return nil
 		},
 	}
+
+	cmd.AddCommand(sharedcommand.NewCmdVersion("webhook"))
 
 	cmd.Flags().AddFlagSet(genericFlagSet)
 	cmd.Flags().AddFlagSet(logsFlagSet)
