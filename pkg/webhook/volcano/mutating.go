@@ -60,11 +60,11 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	for i := range job.Spec.Tasks {
 		task := &job.Spec.Tasks[i]
-		rctName, err := a.handleTask(ctx, task, job)
+		rctNames, err := a.handleTask(ctx, task, job)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
-		if rctName != "" {
+		for _, rctName := range rctNames {
 			needPatch = true
 			rctNameList = append(rctNameList, rctName)
 			task.Template.Spec.ResourceClaims = append(task.Template.Spec.ResourceClaims, corev1.PodResourceClaim{
@@ -103,18 +103,21 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) (string, error) {
+// handleTask processes every container in the task and returns the names of
+// the ResourceClaimTemplates created for them.
+func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) ([]string, error) {
+	var rctNames []string
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
 		rctName, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if rctName != "" {
-			return rctName, nil
+			rctNames = append(rctNames, rctName)
 		}
 	}
-	return "", nil
+	return rctNames, nil
 }
 
 func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) (string, error) {

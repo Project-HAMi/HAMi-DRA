@@ -68,7 +68,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		if rcName != "" {
 			needPatch = true
 			rcNameList = append(rcNameList, rcName)
-			container.Resources.Claims = []corev1.ResourceClaim{{Name: rcName}}
+			container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rcName})
 			pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, corev1.PodResourceClaim{
 				Name:              rcName,
 				ResourceClaimName: &rcName,
