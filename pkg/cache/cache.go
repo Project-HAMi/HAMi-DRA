@@ -19,6 +19,7 @@ package cache
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/utils"
@@ -37,7 +38,7 @@ type Cache struct {
 	kubeClient  kubernetes.Interface
 	sliceLister listersresourcev1.ResourceSliceLister
 	claimLister listersresourcev1.ResourceClaimLister
-	ready       bool
+	ready       atomic.Bool
 }
 
 // NewCache creates a new Cache with a Kubernetes client.
@@ -57,7 +58,6 @@ func NewCache() *Cache {
 func NewCacheWithClient(kubeClient kubernetes.Interface) *Cache {
 	return &Cache{
 		stopCh:      make(chan struct{}),
-		ready:       false,
 		NodeDevices: NewNodeDevices(),
 		kubeClient:  kubeClient,
 	}
@@ -111,19 +111,19 @@ func (c *Cache) Start() error {
 	}
 	klog.V(5).Info("ResourceClaim cache synced successfully")
 
-	c.ready = true
+	c.ready.Store(true)
 	klog.Infof("Cache started and synced successfully")
 	return nil
 }
 
 func (c *Cache) Stop() {
 	close(c.stopCh)
-	c.ready = false
+	c.ready.Store(false)
 	klog.Infof("Cache stopped")
 }
 
 func (c *Cache) IsReady() bool {
-	return c.ready
+	return c.ready.Load()
 }
 
 func (c *Cache) onAddClaim(obj interface{}) {
