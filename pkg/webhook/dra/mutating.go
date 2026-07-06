@@ -61,7 +61,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		rcName, err := a.handleContainer(ctx, container, pod)
+		rcName, err := a.handleContainer(ctx, container, pod, rcNameList)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
@@ -89,24 +89,26 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
-		// Cleanup the ResourceClaims created for this pod
-		for _, rcName := range rcNameList {
-			deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      rcName,
-					Namespace: pod.Namespace,
-				},
-			})
-			if deletionErr != nil {
-				klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) for request: %s after an error occurs", pod.Namespace, rcName, req.Operation)
-			}
-		}
+		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod) (string, error) {
+func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string) {
+	for _, rcName := range rcNames {
+		if deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      rcName,
+				Namespace: namespace,
+			},
+		}); deletionErr != nil {
+			klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) after an error occurs", namespace, rcName)
+		}
+	}
+}
+
+func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string) (string, error) {
 	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
 	countQty, ok := container.Resources.Limits[countResourceName]
 	if !ok {
@@ -131,6 +133,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
 		converted, err := a.DeviceConfig.ConvertCores(coreQty)
 		if err != nil {
+			a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
 			return "", err
 		}
 		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
@@ -144,6 +147,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	a.addAnnotationSelectors(resourceclaim, pod)
 
 	if err := a.Client.Create(ctx, resourceclaim); err != nil {
+		a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
 		return "", fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
 	}
 
