@@ -38,8 +38,21 @@ func TestConvertCoresWithReferenceComputeUnits(t *testing.T) {
 	}).DRADevice(VendorHygon)
 	assert.NoError(t, err)
 
-	converted := cfg.ConvertCores(*resource.NewQuantity(60, resource.DecimalSI))
+	converted, err := cfg.ConvertCores(*resource.NewQuantity(60, resource.DecimalSI))
+	assert.NoError(t, err)
 	assert.Equal(t, int64(72), converted.Value())
+
+	rounded, err := cfg.ConvertCores(*resource.NewQuantity(1, resource.DecimalSI))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(2), rounded.Value())
+}
+
+func TestConvertCoresHygonRequiresReferenceComputeUnits(t *testing.T) {
+	cfg, err := (&Config{}).DRADevice(VendorHygon)
+	assert.NoError(t, err)
+
+	_, err = cfg.ConvertCores(*resource.NewQuantity(50, resource.DecimalSI))
+	assert.Error(t, err)
 }
 
 func TestConvertMemoryMiB(t *testing.T) {

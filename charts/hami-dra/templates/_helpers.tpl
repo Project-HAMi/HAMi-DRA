@@ -106,7 +106,7 @@ groups:
 
 {{- define "hami.dra.webhook.deviceClassName" -}}
 {{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- .Values.dcuDeviceClassName -}}
+{{- include "hami.dra.dcu.deviceClassName" . -}}
 {{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- .Values.drivers.fake.deviceClassName -}}
 {{- else -}}
@@ -116,7 +116,7 @@ groups:
 
 {{- define "hami.dra.webhook.driverName" -}}
 {{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- .Values.dcuDraDriverName -}}
+{{- include "hami.dra.dcu.driverName" . -}}
 {{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- .Values.drivers.fake.driverName -}}
 {{- else -}}

@@ -51,6 +51,10 @@ helm install hami-dra hami-dra/hami-dra \
 
 Then [use the same as hami](https://project-hami.io/zh/docs/userguide/nvidia-device/examples/use-exclusive-card/).
 
+### Hygon DCU
+
+For clusters running Hygon DCU with [k8s-dcu-dra-driver](https://github.com/Project-HAMi/k8s-dcu-dra-driver), see [docs/hygon-dcu.md](./docs/hygon-dcu.md).
+
 ## Configuration
 
 ### Device Resources

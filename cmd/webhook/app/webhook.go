@@ -200,6 +200,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 
 	validatingAdmission := &dra.ValidatingAdmission{}
 	validatingAdmission.Decoder = decoder
+	validatingAdmission.Client = hookManager.GetClient()
 	hookServer.Register("/validate", &webhook.Admission{Handler: validatingAdmission})
 
 	validatingAdmissionVolcano := &volcano.ValidatingAdmission{}

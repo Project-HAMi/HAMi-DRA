@@ -141,7 +141,11 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 	a.removeResource(container, countResourceName)
 
 	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = a.DeviceConfig.ConvertCores(coreQty)
+		converted, err := a.DeviceConfig.ConvertCores(coreQty)
+		if err != nil {
+			return "", err
+		}
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
 	}
 	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
