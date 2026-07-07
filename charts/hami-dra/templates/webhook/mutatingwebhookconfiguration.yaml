@@ -7,8 +7,10 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-mutatingwebhookconfiguration
+{{- if .Values.certs.certManager.enabled }}
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-dra-webhook-serving-cert
+{{- end }}
 webhooks:
   - name: mutate.hami.io
     admissionReviewVersions: ["v1"]

@@ -144,11 +144,11 @@ monitor:
 
 # Certificate configuration
 certs:
-  # Custom certificate (used when mode is "custom")
+  # Custom certificate (used when certManager.enabled is false)
   custom:
     crt: ""
     key: ""
-  # Cert-manager configuration (used when mode is "cert-manager")
+  # Cert-manager configuration
   certManager:
     enabled: true
     # Private key rotation policy: "Never" or "Always"

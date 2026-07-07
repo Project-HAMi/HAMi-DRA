@@ -7,8 +7,10 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-validatingwebhookconfiguration
+{{- if .Values.certs.certManager.enabled }}
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-dra-webhook-serving-cert
+{{- end }}
 webhooks:
   - name: validate.hami.io
     admissionReviewVersions: ["v1"]
