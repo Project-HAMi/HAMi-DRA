@@ -5,7 +5,6 @@ metadata:
   name: {{ include "hami.dra.monitor.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: {{ include "hami.dra.monitor.fullname" . }}
     {{- include "hami-dra-monitor.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.monitor.replicas | default 1 }}

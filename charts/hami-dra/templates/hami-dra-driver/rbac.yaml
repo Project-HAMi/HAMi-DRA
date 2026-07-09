@@ -5,30 +5,25 @@ metadata:
   name: hami-dra-driver-service-account
   namespace: {{ .Release.Namespace }}
 ---
-apiVersion: v1
-items:
-- apiVersion: rbac.authorization.k8s.io/v1
-  kind: Role
-  metadata:
-    name: hami-dra-driver-role
-    namespace: {{ .Release.Namespace }}
-  rules:
-  - apiGroups:
-    - apps
-    resources:
-    - daemonsets
-    - deployments
-    verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
-kind: List
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  resourceVersion: ""
+  name: hami-dra-driver-role
+  namespace: {{ .Release.Namespace }}
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

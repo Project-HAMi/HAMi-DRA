@@ -4,7 +4,6 @@ metadata:
   name: {{ include "hami.dra.webhook.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: {{ include "hami.dra.webhook.fullname" . }}
     {{- include "hami-dra-webhook.labels" . | nindent 4 }}
 spec:
   replicas: 1
