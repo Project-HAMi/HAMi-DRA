@@ -53,7 +53,7 @@ Then [use the same as hami](https://project-hami.io/zh/docs/userguide/nvidia-dev
 
 ### Hygon DCU
 
-For clusters running Hygon DCU with [k8s-dcu-dra-driver](https://github.com/Project-HAMi/k8s-dcu-dra-driver), see [docs/hygon-dcu.md](./docs/hygon-dcu.md).
+For clusters running Hygon DCU with [k8s-dcu-dra-driver](https://github.com/HYGON-AI/k8s-dcu-dra-driver), see [docs/hygon-dcu.md](./docs/hygon-dcu.md).
 
 ## Configuration
 
