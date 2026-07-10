@@ -62,6 +62,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		task := &job.Spec.Tasks[i]
 		rctNames, err := a.handleTask(ctx, task, job)
 		if err != nil {
+			a.deleteResourceClaimTemplates(ctx, job.Namespace, append(rctNameList, rctNames...))
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		for _, rctName := range rctNames {
@@ -87,20 +88,25 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	marshaledBytes, err := json.Marshal(job)
 	if err != nil {
-		for _, rctName := range rctNameList {
-			deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaimTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      rctName,
-					Namespace: job.Namespace,
-				},
-			})
-			if deletionErr != nil {
-				klog.V(5).Infof("Failed to delete ResourceClaimTemplate(%s/%s) for request: %s after an error occurs", job.Namespace, rctName, req.Operation)
-			}
-		}
+		a.deleteResourceClaimTemplates(ctx, job.Namespace, rctNameList)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+}
+
+// deleteResourceClaimTemplates removes templates created earlier in the same
+// request after a later step fails.
+func (a *MutatingAdmission) deleteResourceClaimTemplates(ctx context.Context, namespace string, names []string) {
+	for _, name := range names {
+		if deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaimTemplate{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+		}); deletionErr != nil {
+			klog.Errorf("Failed to delete ResourceClaimTemplate(%s/%s), it may need manual cleanup: %v", namespace, name, deletionErr)
+		}
+	}
 }
 
 // handleTask processes every container in the task and returns the names of
@@ -111,7 +117,8 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 		container := &task.Template.Spec.Containers[i]
 		rctName, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
 		if err != nil {
-			return nil, err
+			// Return the names created so far so the caller can clean them up.
+			return rctNames, err
 		}
 		if rctName != "" {
 			rctNames = append(rctNames, rctName)

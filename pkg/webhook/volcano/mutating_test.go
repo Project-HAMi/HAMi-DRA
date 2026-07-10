@@ -23,10 +23,13 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	vcv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -202,6 +205,66 @@ func TestHandleTaskProcessesAllContainers(t *testing.T) {
 		require.Len(t, container.Resources.Claims, 1, "container %s should reference a claim", container.Name)
 	}
 	assert.Empty(t, task.Template.Spec.Containers[1].Resources.Claims, "cpu-only container should be untouched")
+}
+
+func TestHandleCleansUpTemplatesOnPartialFailure(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+
+	// A template with the second container's name already exists, so its
+	// Create fails after the first container's template was created.
+	existing := &resourceapi.ResourceClaimTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "default-leak-task-gpu-two", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
+
+	mutating := &MutatingAdmission{
+		Decoder: admission.NewDecoder(sch),
+		Client:  fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName: "nvidia.com/gpu",
+			RequestName:       "gpu",
+		},
+	}
+
+	gpuResources := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("1"),
+		},
+	}
+	job := &vcv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "leak", Namespace: "default"},
+		Spec: vcv1alpha1.JobSpec{
+			Tasks: []vcv1alpha1.TaskSpec{{
+				Name: "leak-task",
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "gpu-one", Resources: *gpuResources.DeepCopy()},
+							{Name: "gpu-two", Resources: *gpuResources.DeepCopy()},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	jobRaw, err := json.Marshal(job)
+	require.NoError(t, err)
+	resp := mutating.Handle(context.Background(), admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Namespace: "default",
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: jobRaw},
+		},
+	})
+	require.False(t, resp.Allowed, "request should fail when a template cannot be created")
+
+	err = fakeClient.Get(context.Background(),
+		client.ObjectKey{Namespace: "default", Name: "default-leak-task-gpu-one"},
+		&resourceapi.ResourceClaimTemplate{})
+	assert.True(t, apierrors.IsNotFound(err), "template created before the failure should be deleted, got: %v", err)
 }
 
 func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
