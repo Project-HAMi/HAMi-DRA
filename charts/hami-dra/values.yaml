@@ -51,6 +51,7 @@ kunlunResourceVMemoryName: "kunlunxin.com/vxpu-memory"
 
 # Webhook deployment configuration
 webhook:
+  replicas: 1
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-webhook
@@ -82,6 +83,10 @@ webhook:
   config:
     mutating:
       enabled: true
+      # "Fail" or "Ignore". Set to "Ignore" to keep pod creation working if the
+      # webhook is unavailable, at the cost of pods possibly starting without
+      # their GPU ResourceClaims.
+      failurePolicy: Fail
     validating:
       enabled: true
     scope:
@@ -93,6 +98,8 @@ webhook:
         - kube-system
     volcano:
       enabled: true
+      # "Fail" or "Ignore", see webhook.config.mutating.failurePolicy.
+      failurePolicy: Fail
 
 # Monitor deployment configuration
 monitor:

@@ -32,6 +32,7 @@ import (
 	logsv1 "k8s.io/component-base/logs/api/v1"
 	"k8s.io/klog/v2"
 	controllerruntime "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -213,6 +214,15 @@ func Run(ctx context.Context, opts *options.Options) error {
 	validatingAdmissionVolcano.Decoder = decoder
 	validatingAdmissionVolcano.Client = hookManager.GetClient()
 	hookServer.Register("/validate-volcano", &webhook.Admission{Handler: validatingAdmissionVolcano})
+
+	if err := hookManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		klog.Errorf("Failed to add healthz check: %v", err)
+		return err
+	}
+	if err := hookManager.AddReadyzCheck("readyz", hookServer.StartedChecker()); err != nil {
+		klog.Errorf("Failed to add readyz check: %v", err)
+		return err
+	}
 
 	// blocks until the context is done.
 	if err := hookManager.Start(ctx); err != nil {
