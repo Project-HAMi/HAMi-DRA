@@ -19,7 +19,7 @@ package version
 // Base version information.
 //
 // This is the fallback data used when version information from git is not
-// provided via go ldflags. It provides an approximation of the Karmada
+// provided via go ldflags. It provides an approximation of the HAMi-DRA
 // version for ad-hoc builds (e.g. `go build`) that cannot get the version
 // information from git.
 var (
