@@ -55,7 +55,7 @@ webhook:
     registry: ghcr.io
     repository: project-hami/hami-dra-webhook
     tag: "v0.2.1"
-    ## Specify a imagePullPolicy
+    ## Specify an imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
     ##
@@ -102,7 +102,7 @@ monitor:
     registry: ghcr.io
     repository: project-hami/hami-dra-monitor
     tag: "v0.2.1"
-    ## Specify a imagePullPolicy
+    ## Specify an imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
     ##
@@ -171,7 +171,7 @@ drivers:
       registry: docker.io
       repository: projecthami/k8s-dra-driver
       tag: "v0.1.0"
-      ## Specify a imagePullPolicy
+      ## Specify an imagePullPolicy
       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
       ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
       ##
