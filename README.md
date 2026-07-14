@@ -23,7 +23,7 @@ This webhook automatically transforms Pod specifications that request GPU resour
 
 ### Configure and install with Helm
 
-You need to ensure [cert-manager](https://cert-manager.io/docs/installation/) is installed before installing the webhook.
+You need [cert-manager](https://cert-manager.io/docs/installation/) installed before installing the webhook. If you don't want to use cert-manager, set `certs.certManager.enabled=false` and provide your own certificate via `certs.custom.crt` and `certs.custom.key`.
 
 Add the HAMi-DRA Helm repository:
 ```bash
