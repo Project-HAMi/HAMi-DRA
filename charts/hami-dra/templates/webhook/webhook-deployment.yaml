@@ -42,6 +42,10 @@ spec:
             - containerPort: 8000
               name: health
               protocol: TCP
+          {{- if .Values.webhook.resources }}
+          resources:
+            {{- toYaml .Values.webhook.resources | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: device-config
               mountPath: /device-config.yaml
