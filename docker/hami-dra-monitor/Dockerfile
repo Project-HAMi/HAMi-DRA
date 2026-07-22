@@ -22,6 +22,8 @@ COPY pkg/ pkg/
 RUN go build -ldflags="-s -w" -a -o monitor cmd/monitor/main.go && echo "Building GOARCH of $GOARCH.."
 
 FROM  alpine:3.18
+RUN adduser -D -u 1000 monitor
 COPY --from=builder /workspace/monitor /bin/monitor
+USER monitor
 CMD ["/bin/monitor"]
 

@@ -21,6 +21,13 @@ spec:
         - name: webhook
           image: {{ include "hami.dra.webhook.image" . }}
           imagePullPolicy: {{ .Values.webhook.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - /bin/webhook
             - --v=5
