@@ -11,4 +11,4 @@ rules:
   verbs: ["get", "list", "watch"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims", "resourceclaimtemplates"]
-  verbs: ["*"]
+  verbs: ["create", "delete"]
