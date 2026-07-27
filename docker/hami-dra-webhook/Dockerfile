@@ -22,5 +22,7 @@ COPY pkg/ pkg/
 RUN go build -ldflags="-s -w" -a -o webhook cmd/webhook/main.go && echo "Building GOARCH of $GOARCH.."
 
 FROM  alpine:3.18
+RUN adduser -D -u 1000 webhook
 COPY --from=builder /workspace/webhook /bin/webhook
+USER webhook
 CMD ["/bin/webhook"]
