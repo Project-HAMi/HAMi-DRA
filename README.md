@@ -89,7 +89,7 @@ Access metrics:
 curl http://<node-ip>:31995/metrics
 ```
 
-you will see metrics like:
+You will see metrics like this:
 
 
 ![metrics.png](./docs/metrics.png)
