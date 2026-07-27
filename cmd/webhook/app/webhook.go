@@ -136,8 +136,14 @@ func Run(ctx context.Context, opts *options.Options) error {
 	}
 	// Create a new scheme and add default Kubernetes schemes
 	sch := runtime.NewScheme()
-	_ = scheme.AddToScheme(sch)
-	_ = vcv1alpha1.AddToScheme(sch)
+	if err := scheme.AddToScheme(sch); err != nil {
+		klog.Errorf("Failed to add default scheme: %v", err)
+		return err
+	}
+	if err := vcv1alpha1.AddToScheme(sch); err != nil {
+		klog.Errorf("Failed to add volcano scheme: %v", err)
+		return err
+	}
 
 	config, err := controllerruntime.GetConfig()
 	if err != nil {
