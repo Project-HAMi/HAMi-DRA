@@ -78,6 +78,13 @@ webhook:
     requests:
       cpu: 100m
       memory: 128Mi
+  ## @param pdb PodDisruptionBudget for the webhook Deployment.
+  ## maxUnavailable is used instead of minAvailable so this stays safe even
+  ## with a single replica (minAvailable:1 at replicas:1 would block evictions
+  ## entirely and prevent node drains).
+  pdb:
+    enabled: true
+    maxUnavailable: 1
   ## @param nodeSelector controllerManager node labels for pod assignment
   # Webhook configuration
   config:

@@ -1,0 +1,14 @@
+{{- if .Values.webhook.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hami.dra.webhook.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hami-dra-webhook.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.webhook.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "hami-dra-webhook.selectorLabels" . | nindent 6 }}
+{{- end }}
