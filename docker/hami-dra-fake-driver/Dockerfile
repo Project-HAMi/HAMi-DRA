@@ -16,6 +16,6 @@ COPY internal/ internal/
 
 RUN go build -ldflags="-s -w" -a -o fake-driver ./cmd/fake-driver && echo "Building GOARCH of $GOARCH.."
 
-FROM alpine:3.18
+FROM alpine:3.22
 COPY --from=builder /workspace/fake-driver /bin/fake-driver
 ENTRYPOINT ["/bin/fake-driver"]
