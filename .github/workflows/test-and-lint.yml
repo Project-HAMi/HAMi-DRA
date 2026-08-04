@@ -144,13 +144,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.26.5'
           cache-dependency-path: go.sum
 
-      # ponytail: report-only until the dependency bump in #74 lands and this
-      # starts clean; flip both steps to fail the build once it's green.
       - name: Run govulncheck
-        continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
@@ -161,4 +158,4 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          exit-code: '1'
