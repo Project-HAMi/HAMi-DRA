@@ -30,6 +30,5 @@ Before posting, remove or mask credentials, tokens, certificate private keys, GP
 - Device type and driver version:
 - Container runtime version:
 - cert-manager version or custom certificate configuration:
-- Installation method and relevant Helm configuration:
 - Kernel version from `uname -a`:
 - Others:
