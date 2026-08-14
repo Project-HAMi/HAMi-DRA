@@ -29,6 +29,5 @@ Before posting, remove or mask credentials, tokens, certificate private keys, GP
 - HAMi version:
 - Device type and driver version:
 - Container runtime version:
-- cert-manager version or custom certificate configuration:
 - Kernel version from `uname -a`:
 - Others:
