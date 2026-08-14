@@ -22,8 +22,6 @@ Before posting, include only relevant, time-bounded excerpts and remove or mask 
 
 - HAMi-DRA version, commit, image, or Helm chart version:
 - Kubernetes version and enabled DRA feature gates:
-- HAMi version:
 - Device type and driver version:
-- Container runtime and CDI version:
-- cert-manager version or certificate configuration:
+- Container runtime version:
 - Others:
