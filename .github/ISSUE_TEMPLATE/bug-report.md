@@ -28,7 +28,7 @@ Before posting, remove or mask credentials, tokens, certificate private keys, GP
 - Kubernetes version and enabled DRA feature gates:
 - HAMi version:
 - Device type and driver version:
-- Container runtime and CDI version:
+- Container runtime version:
 - cert-manager version or custom certificate configuration:
 - Installation method and relevant Helm configuration:
 - Kernel version from `uname -a`:
