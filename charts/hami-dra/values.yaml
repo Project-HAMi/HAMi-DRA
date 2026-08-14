@@ -152,8 +152,6 @@ certs:
     # In cert-manager >= v1.18.0, the default changed from "Never" to "Always"
     # Setting to "Never" avoids frequent certificate rotation for webhooks
     privateKeyRotationPolicy: "Never"
-    issuer:
-      clusterIssuerName: ""  # Required when type is "clusterIssuer"
 
 # DRA Drivers configuration
 drivers:
