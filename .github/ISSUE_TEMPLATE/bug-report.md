@@ -26,7 +26,6 @@ Before posting, remove or mask credentials, tokens, certificate private keys, GP
 **Environment**:
 - HAMi-DRA version, commit, image, or Helm chart version:
 - Kubernetes version and enabled DRA feature gates:
-- HAMi version:
 - Device type and driver version:
 - Container runtime version:
 - Kernel version from `uname -a`:
