@@ -35,6 +35,7 @@ import (
 	"github.com/Project-HAMi/HAMi-DRA/cmd/monitor/app/options"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/cache"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/metrics"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/utils"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/version"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/version/sharedcommand"
 )
@@ -108,7 +109,12 @@ func Run(ctx context.Context, opts *options.Options) error {
 
 	// Initialize cache
 	klog.Info("Initializing cache...")
-	cacheInstance := cache.NewCache()
+	client, err := utils.NewClientWithRateLimit(opts.KubeAPIQPS, opts.KubeAPIBurst)
+	if err != nil {
+		klog.Errorf("Failed to create Kubernetes client: %v", err)
+		return err
+	}
+	cacheInstance := cache.NewCacheWithClient(client.Interface)
 	if err := cacheInstance.Start(); err != nil {
 		klog.Errorf("Failed to start cache: %v", err)
 		return err
