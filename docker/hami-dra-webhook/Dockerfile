@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.26.5 AS builder
+FROM golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6 AS builder
 
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0
@@ -21,7 +21,7 @@ COPY pkg/ pkg/
 # Build
 RUN go build -ldflags="-s -w" -a -o webhook cmd/webhook/main.go && echo "Building GOARCH of $GOARCH.."
 
-FROM alpine:3.22
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 RUN adduser -D -u 1000 webhook
 COPY --from=builder /workspace/webhook /bin/webhook
 USER webhook
