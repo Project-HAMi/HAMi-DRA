@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -144,7 +145,10 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
 	}
 
-	a.addAnnotationSelectors(resourceclaim, pod)
+	if err := a.addAnnotationSelectors(resourceclaim, pod); err != nil {
+		a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
+		return "", err
+	}
 
 	if err := a.Client.Create(ctx, resourceclaim); err != nil {
 		a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
@@ -200,48 +204,55 @@ func (a *MutatingAdmission) removeResource(container *corev1.Container, resource
 	}
 }
 
+// celStringList converts a comma-separated annotation value into CEL string
+// literals, trimming whitespace and dropping empty elements.
+func celStringList(raw string) []string {
+	var literals []string
+	for _, v := range strings.Split(raw, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			literals = append(literals, strconv.Quote(v))
+		}
+	}
+	return literals
+}
+
 // addAnnotationSelectors adds device selectors based on pod annotations.
-func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod) {
+// It fails closed: an annotation that yields no usable value is an error,
+// so an allow-list that resolved to empty cannot silently match any device.
+func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod) error {
 	exactly := resourceclaim.Spec.Devices.Requests[0].Exactly
 	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
 
 	// Guard against nil pod or missing annotations to prevent panic
 	if pod == nil || pod.Annotations == nil {
-		return
+		return nil
 	}
 
-	if UUIDStr, ok := pod.Annotations[a.DeviceConfig.UseUUIDAnnotation]; ok {
-		UUIDs := strings.Split(UUIDStr, ",")
+	for _, sel := range []struct {
+		annotation string
+		field      string
+		negate     bool
+	}{
+		{a.DeviceConfig.UseUUIDAnnotation, "uuid", false},
+		{a.DeviceConfig.NoUseUUIDAnnotation, "uuid", true},
+		{a.DeviceConfig.UseTypeAnnotation, "productName", false},
+		{a.DeviceConfig.NoUseTypeAnnotation, "productName", true},
+	} {
+		raw, ok := pod.Annotations[sel.annotation]
+		if !ok {
+			continue
+		}
+		literals := celStringList(raw)
+		if len(literals) == 0 {
+			return fmt.Errorf("annotation %s has no usable value: %q", sel.annotation, raw)
+		}
+		expr := fmt.Sprintf(`device.attributes[%q].%s in [%s]`, draDriverName, sel.field, strings.Join(literals, ","))
+		if sel.negate {
+			expr = "!(" + expr + ")"
+		}
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
-			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].uuid in ["%s"]`, draDriverName, strings.Join(UUIDs, `","`)),
-			},
+			CEL: &resourceapi.CELDeviceSelector{Expression: expr},
 		})
 	}
-	if noUUIDStr, ok := pod.Annotations[a.DeviceConfig.NoUseUUIDAnnotation]; ok {
-		noUUIDs := strings.Split(noUUIDStr, ",")
-		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
-			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`!(device.attributes["%s"].uuid in ["%s"])`, draDriverName, strings.Join(noUUIDs, `","`)),
-			},
-		})
-	}
-
-	if useTypeStr, ok := pod.Annotations[a.DeviceConfig.UseTypeAnnotation]; ok {
-		useTypes := strings.Split(useTypeStr, ",")
-		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
-			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].productName in ["%s"]`, draDriverName, strings.Join(useTypes, `","`)),
-			},
-		})
-	}
-
-	if noUseTypeStr, ok := pod.Annotations[a.DeviceConfig.NoUseTypeAnnotation]; ok {
-		noUseTypes := strings.Split(noUseTypeStr, ",")
-		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
-			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`!(device.attributes["%s"].productName in ["%s"])`, draDriverName, strings.Join(noUseTypes, `","`)),
-			},
-		})
-	}
+	return nil
 }

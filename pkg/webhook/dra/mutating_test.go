@@ -123,6 +123,47 @@ func TestAddAnnotationSelectors(t *testing.T) {
 			podAnnotations: map[string]string{},
 			wantSelectors:  []string{},
 		},
+		{
+			name: "values are trimmed and empty elements dropped",
+			podAnnotations: map[string]string{
+				constants.UseUUIDAnnotation: " gpu-123, gpu-456,",
+			},
+			wantSelectors: []string{
+				`device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-123","gpu-456"]`,
+			},
+		},
+		{
+			name: "quote and backslash are escaped as a single literal",
+			podAnnotations: map[string]string{
+				constants.UseTypeAnnotation: `A100"x,B\C`,
+			},
+			wantSelectors: []string{
+				`device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100\"x","B\\C"]`,
+			},
+		},
+		{
+			name: "structure injection stays a single literal",
+			podAnnotations: map[string]string{
+				constants.UseUUIDAnnotation: `"] || true || ["`,
+			},
+			wantSelectors: []string{
+				`device.attributes["hami-core-gpu.project-hami.io"].uuid in ["\"] || true || [\""]`,
+			},
+		},
+		{
+			name: "empty annotation fails closed",
+			podAnnotations: map[string]string{
+				constants.UseUUIDAnnotation: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "annotation with only separators fails closed",
+			podAnnotations: map[string]string{
+				constants.NoUseTypeAnnotation: " , ,",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -160,7 +201,12 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				},
 			}
 
-			admission.addAnnotationSelectors(claim, pod)
+			err := admission.addAnnotationSelectors(claim, pod)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 
 			selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
 			for i, selector := range selectors {
@@ -209,7 +255,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 		},
 	}
 
-	admission.addAnnotationSelectors(claim, pod)
+	require.NoError(t, admission.addAnnotationSelectors(claim, pod))
 	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
 	assert.Len(t, selectors, 2)
 	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["DCU-123"]`, selectors[0].CEL.Expression)
