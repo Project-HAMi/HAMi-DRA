@@ -7,12 +7,14 @@ on:
       - "v*"
 
 permissions:
-  contents: write   # create GitHub Releases & push to gh-pages
-  packages: write   # push OCI chart to GHCR
+  contents: read
 
 jobs:
   helm-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create GitHub Releases & push to gh-pages
+      packages: write   # push OCI chart to GHCR
 
     steps:
       - name: Checkout
