@@ -14,7 +14,7 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: go1.26.5+auto
+      GOTOOLCHAIN: go1.26.6+auto
     
     steps:
       - name: Checkout repository
@@ -48,7 +48,7 @@ jobs:
     name: Run Linter
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: go1.26.5+auto
+      GOTOOLCHAIN: go1.26.6+auto
     
     steps:
       - name: Checkout repository
