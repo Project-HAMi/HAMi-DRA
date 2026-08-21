@@ -69,7 +69,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseUUIDAnnotation: "gpu-999,gpu-888",
 			},
 			wantSelectors: []string{
-				`device.attributes["hami-core-gpu.project-hami.io"].uuid not in ["gpu-999","gpu-888"]`,
+				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999","gpu-888"])`,
 			},
 		},
 
@@ -99,7 +99,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseTypeAnnotation: "A100,H100",
 			},
 			wantSelectors: []string{
-				`device.attributes["hami-core-gpu.project-hami.io"].productName not in ["A100","H100"]`,
+				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100","H100"])`,
 			},
 		},
 
@@ -113,9 +113,9 @@ func TestAddAnnotationSelectors(t *testing.T) {
 			},
 			wantSelectors: []string{
 				`device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-123","gpu-456"]`,
-				`device.attributes["hami-core-gpu.project-hami.io"].uuid not in ["gpu-999"]`,
+				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999"])`,
 				`device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100"]`,
-				`device.attributes["hami-core-gpu.project-hami.io"].productName not in ["H100"]`,
+				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["H100"])`,
 			},
 		},
 		{
