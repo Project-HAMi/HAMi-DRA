@@ -222,7 +222,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		noUUIDs := strings.Split(noUUIDStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].uuid not in ["%s"]`, draDriverName, strings.Join(noUUIDs, `","`)),
+				Expression: fmt.Sprintf(`!(device.attributes["%s"].uuid in ["%s"])`, draDriverName, strings.Join(noUUIDs, `","`)),
 			},
 		})
 	}
@@ -240,7 +240,7 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		noUseTypes := strings.Split(noUseTypeStr, ",")
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{
-				Expression: fmt.Sprintf(`device.attributes["%s"].productName not in ["%s"]`, draDriverName, strings.Join(noUseTypes, `","`)),
+				Expression: fmt.Sprintf(`!(device.attributes["%s"].productName in ["%s"])`, draDriverName, strings.Join(noUseTypes, `","`)),
 			},
 		})
 	}
