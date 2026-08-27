@@ -72,7 +72,7 @@ require (
 )
 
 require (
-	k8s.io/dynamic-resource-allocation v0.35.3
+	k8s.io/dynamic-resource-allocation v0.36.4
 	volcano.sh/apis v1.14.0
 )
 
@@ -80,5 +80,5 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.6.14 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/grpc v1.82.1 // indirect
-	k8s.io/kubelet v0.35.3 // indirect
+	k8s.io/kubelet v0.36.4 // indirect
 )
