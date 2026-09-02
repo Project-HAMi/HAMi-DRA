@@ -17,5 +17,7 @@ COPY internal/ internal/
 RUN go build -ldflags="-s -w" -a -o fake-driver ./cmd/fake-driver && echo "Building GOARCH of $GOARCH.."
 
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+# ponytail: pinned digest can lag CVE fixes in apk repos; upgrade at build time to pick up patched packages
+RUN apk update && apk upgrade --no-cache
 COPY --from=builder /workspace/fake-driver /bin/fake-driver
 ENTRYPOINT ["/bin/fake-driver"]
