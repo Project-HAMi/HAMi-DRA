@@ -1,3 +1,6 @@
+{{- if and .Values.drivers.fake.enabled .Values.drivers.dcu.enabled (eq (include "hami.dra.driver.fake.profile" .) "hygon") }}
+{{- fail "drivers.fake.enabled (profile=hygon) and drivers.dcu.enabled cannot both be true: both would create DeviceClass dra.hygon.com (or the same custom name). Use fake alone for testing, or the real DCU driver alone." -}}
+{{- end }}
 {{- if .Values.drivers.nvidia.enabled }}
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
@@ -16,10 +19,10 @@ spec:
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
-  name: {{ .Values.drivers.fake.deviceClassName }}
+  name: {{ include "hami.dra.driver.fake.deviceClassName" . }}
 spec:
   selectors:
   - cel:
       expression: |-
-        device.driver == "{{ .Values.drivers.fake.driverName }}" && device.attributes["{{ .Values.drivers.fake.driverName }}"].type == "hami-gpu"
+        device.driver == "{{ include "hami.dra.driver.fake.driverName" . }}" && device.attributes["{{ include "hami.dra.driver.fake.driverName" . }}"].type == "{{ include "hami.dra.driver.fake.deviceType" . }}"
 {{- end }}

@@ -95,7 +95,7 @@ type Config struct {
 	Hygon  HygonConfig  `yaml:"hygon"`
 }
 
-// HygonConfig holds DCU DRA settings for k8s-dcu-dra-driver (dra.hygon.com).
+// HygonConfig holds DCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).
 type HygonConfig struct {
 	ResourceCountName  string `yaml:"resourceCountName"`
 	ResourceMemoryName string `yaml:"resourceMemoryName"`

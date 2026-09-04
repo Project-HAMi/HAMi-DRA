@@ -132,8 +132,41 @@ Important values:
 1. `drivers.fake.image.*`: fake plugin image settings.
 2. `drivers.fake.driverName`: DRA driver name.
 3. `drivers.fake.deviceClassName`: defaults to `fake-gpu.project-hami.io`.
-4. `drivers.fake.configMap.existingName`: use an existing `ConfigMap`; when set, the chart does not create one.
-5. `drivers.fake.configMap.name`: optional custom name for the chart-managed `ConfigMap`.
-6. `drivers.fake.configMap.key`: defaults to `config.yaml`.
-7. By default, the template renders a built-in `ConfigMap` that creates eight `A100-SXM4-80GB` fake devices on every node.
-8. If you need to override the default content, use `drivers.fake.configMap.inlineData`.
+4. `drivers.fake.profile`: built-in fake device profile, either `nvidia` or `hygon`.
+5. `drivers.fake.configMap.existingName`: use an existing `ConfigMap`; when set, the chart does not create one.
+6. `drivers.fake.configMap.name`: optional custom name for the chart-managed `ConfigMap`.
+7. `drivers.fake.configMap.key`: defaults to `config.yaml`.
+8. By default, the template renders a built-in `ConfigMap` that creates eight fake devices on every node.
+9. If you need to override the default content, use `drivers.fake.configMap.inlineData`.
+
+### Hygon DCU fake driver
+
+The `hygon` profile mirrors a real `dra.hygon.com` ResourceSlice from
+[`HYGON-AI/k8s-hcu-dra-driver`](https://github.com/HYGON-AI/k8s-hcu-dra-driver)
+(K100_AI): `type: dcu`, `productName: K100_AI`, `cores=120`, `memory=65520Mi`,
+and `slices=4` (one physical card can be split into at most 4 vHCU;
+`requestPolicy.default` is `1`). Driver/DeviceClass naming stays `dra.hygon.com`.
+
+```bash
+helm upgrade --install hami-dra ./charts/hami-dra \
+  --set deviceVendor=hygon \
+  --set drivers.nvidia.enabled=false \
+  --set drivers.fake.enabled=true \
+  --set drivers.fake.profile=hygon
+```
+
+With the default fake driver names still set in `values.yaml`, `profile=hygon` automatically renders:
+
+1. `DeviceClass` name: `dra.hygon.com`
+2. fake driver `--driver-name`: `dra.hygon.com`
+3. selector type: `device.attributes["dra.hygon.com"].type == "dcu"`
+
+Set `drivers.fake.deviceClassName` or `drivers.fake.driverName` explicitly if you need different names.
+
+Do **not** enable `drivers.fake` with `profile=hygon` together with:
+
+1. `drivers.dcu.enabled=true` in this chart, or
+2. a live `k8s-hcu-dra-driver` that already owns `DeviceClass` `dra.hygon.com`
+
+Either setup alone is fine; enabling both creates a duplicate DeviceClass name conflict.
+Unknown `drivers.fake.profile` values (for example a typo like `hygonn`) fail chart rendering instead of silently falling back to `nvidia`.
