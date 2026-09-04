@@ -1,13 +1,13 @@
 # Hygon DCU
 
-Deploy HAMi-DRA webhook for Hygon DCU clusters that already run [k8s-dcu-dra-driver](https://github.com/HYGON-AI/k8s-dcu-dra-driver).
+Deploy HAMi-DRA webhook for Hygon DCU clusters that already run [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver).
 
-This chart deploys only the mutating/validating webhook and TLS certificates. The DCU DRA driver and `DeviceClass` (`dra.hygon.com`) must be deployed separately via k8s-dcu-dra-driver.
+This chart deploys only the mutating/validating webhook and TLS certificates. The DCU DRA driver and `DeviceClass` (`dra.hygon.com`) must be deployed separately via k8s-hcu-dra-driver.
 
 ## Prerequisites
 
 1. Kubernetes with DRA enabled (same requirements as the main chart).
-2. [k8s-dcu-dra-driver](https://github.com/HYGON-AI/k8s-dcu-dra-driver) deployed; `DeviceClass` `dra.hygon.com` must exist.
+2. [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver) deployed; `DeviceClass` `dra.hygon.com` must exist.
 3. [cert-manager](https://cert-manager.io/docs/installation/) installed.
 4. `hami-dra-webhook` image built and reachable from all nodes (override `webhook.image.*` if not using the default registry).
 
@@ -90,4 +90,8 @@ For whole-card requests only (`hygon.com/dcunum` without `dcumem` / `dcucores`),
 | cert-manager resources | Yes | Yes |
 | NVIDIA DRA driver DaemonSet | No | Yes |
 | hami-dra-monitor | No | Yes |
-| DCU DRA driver | External (k8s-dcu-dra-driver) | N/A |
+| DCU DRA driver | External (k8s-hcu-dra-driver) | N/A |
+
+## Testing without DCU hardware
+
+To publish fake `dra.hygon.com` ResourceSlices (including `capacity.slices=4`) instead of installing the real driver, see [fake-dra-driver.md](./fake-dra-driver.md). Do not enable `drivers.fake.profile=hygon` together with a live k8s-hcu-dra-driver: both would claim `DeviceClass` `dra.hygon.com`.

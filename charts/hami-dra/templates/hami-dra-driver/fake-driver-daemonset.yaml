@@ -35,7 +35,7 @@ spec:
         - /bin/fake-driver
         args:
         - --node-name=$(NODE_NAME)
-        - --driver-name={{ .Values.drivers.fake.driverName }}
+        - --driver-name={{ include "hami.dra.driver.fake.driverName" . }}
         - --configmap-name={{ include "hami.dra.driver.fake.configMapName" . }}
         - --configmap-namespace={{ .Release.Namespace }}
         - --configmap-key={{ .Values.drivers.fake.configMap.key }}
