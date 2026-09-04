@@ -4,6 +4,7 @@ BUILD_ARCH ?= linux/$(GOARCH)
 GOTOOLCHAIN ?= go1.26.6+auto
 GOLANGCI_LINT_VERSION ?= v2.5.0
 GOLANGCI_LINT_ARGS ?= --timeout=5m
+GO_LICENSE_FILES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./bin/*")
 
 export GOTOOLCHAIN
 
@@ -144,18 +145,18 @@ cert:
 license:
 	@if command -v addlicense >/dev/null 2>&1; then \
 		echo "Using addlicense tool..."; \
-		addlicense -c "The HAMi Authors" -l apache -y 2026 -s -f .license-header.txt .; \
+		addlicense -c "The HAMi Authors" -l apache -y 2026 -s $(GO_LICENSE_FILES); \
 	else \
 		echo "addlicense not found, using script..."; \
-		echo "To install addlicense: ./scripts/install-addlicense.sh"; \
+		echo "To install addlicense: go install github.com/google/addlicense@latest"; \
 		./scripts/add-license.sh; \
 	fi
 
 # Check license headers (dry-run with addlicense)
 license-check:
 	@if command -v addlicense >/dev/null 2>&1; then \
-		addlicense -c "The HAMi Authors" -l apache -y 2026 -s -f .license-header.txt -check .; \
+		addlicense -c "The HAMi Authors" -l apache -y 2026 -s -check $(GO_LICENSE_FILES); \
 	else \
-		echo "addlicense not found. Install it with: ./scripts/install-addlicense.sh"; \
+		echo "addlicense not found. Install it with: go install github.com/google/addlicense@latest"; \
 		exit 1; \
 	fi
