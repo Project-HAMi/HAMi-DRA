@@ -1,0 +1,29 @@
+# HAMi-DRA Helm values for Huawei Ascend + ascend-dra-driver (HAMivNPUCore)
+#
+# Prerequisites:
+# - Kubernetes >= 1.34 with DynamicResourceAllocation and DRAConsumableCapacity
+# - ascend-dra-driver already deployed in HAMivNPUCore mode (default)
+# - Ascend Docker Runtime / RuntimeClass "ascend" on NPU nodes
+# - cert-manager installed in cluster
+#
+# Install:
+#   helm install hami-dra ./charts/hami-dra -n hami-system --create-namespace -f ./charts/hami-dra/ascend-values.yaml
+#
+# This overlay enables HAMivNPUCore conversion for all HAMi Ascend chips
+# (910A/B2/B3/B4/B4-1/310P/910C). Traditional vNPU / full-card DeviceClasses
+# stay with the driver.
+
+deviceVendor: ascend
+
+drivers:
+  nvidia:
+    enabled: false
+  fake:
+    enabled: false
+
+monitor:
+  enabled: false
+
+certs:
+  certManager:
+    enabled: true

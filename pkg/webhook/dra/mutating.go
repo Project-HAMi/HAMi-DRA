@@ -27,7 +27,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
@@ -40,9 +39,10 @@ import (
 
 // MutatingAdmission mutates API request if necessary.
 type MutatingAdmission struct {
-	Decoder      admission.Decoder
-	Client       client.Client
-	DeviceConfig *config.DRADeviceConfig
+	Decoder       admission.Decoder
+	Client        client.Client
+	DeviceConfig  *config.DRADeviceConfig
+	DeviceConfigs []*config.DRADeviceConfig
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -62,11 +62,11 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		rcName, err := a.handleContainer(ctx, container, pod, rcNameList)
+		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
-		if rcName != "" {
+		for _, rcName := range rcNames {
 			needPatch = true
 			rcNameList = append(rcNameList, rcName)
 			container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rcName})
@@ -87,6 +87,9 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		pod.Labels = make(map[string]string)
 	}
 	pod.Labels[constants.DraLabel] = "true"
+	if runtimeCfg := a.runtimeClassConfig(); runtimeCfg != nil {
+		runtimeCfg.ApplyRuntimeClass(&pod.Spec)
+	}
 
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
@@ -109,60 +112,94 @@ func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace 
 	}
 }
 
-func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string) (string, error) {
-	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
-	countQty, ok := container.Resources.Limits[countResourceName]
-	if !ok {
-		return "", nil
+func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
+	if len(a.DeviceConfigs) > 0 {
+		return a.DeviceConfigs
+	}
+	if a.DeviceConfig != nil {
+		return []*config.DRADeviceConfig{a.DeviceConfig}
+	}
+	return nil
+}
+
+func (a *MutatingAdmission) runtimeClassConfig() *config.DRADeviceConfig {
+	for _, cfg := range a.configs() {
+		if cfg != nil && cfg.RuntimeClassName != "" {
+			return cfg
+		}
+	}
+	return a.DeviceConfig
+}
+
+func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string) ([]string, error) {
+	var rcNames []string
+	cleanup := func() {
+		a.deleteResourceClaims(ctx, pod.Namespace, append(createdClaims, rcNames...))
 	}
 
-	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, container.Name)
+	for _, cfg := range a.configs() {
+		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
+		countQty, ok := container.Resources.Limits[countResourceName]
+		if !ok {
+			continue
+		}
+
+		rcName := resourceClaimName(pod, container.Name, cfg)
+		resourceclaim := a.buildResourceClaim(rcName, pod.Namespace, cfg)
+		resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
+
+		a.removeResource(container, countResourceName)
+
+		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
+			converted, err := cfg.ConvertCores(coreQty)
+			if err != nil {
+				cleanup()
+				return nil, err
+			}
+			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
+			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
+		}
+		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
+			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = cfg.ConvertMemory(memQty)
+			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
+		}
+
+		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
+			cleanup()
+			return nil, err
+		}
+
+		if err := a.Client.Create(ctx, resourceclaim); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
+		}
+
+		klog.V(4).Infof("Successfully created ResourceClaim %s/%s", pod.Namespace, rcName)
+		rcNames = append(rcNames, rcName)
+	}
+	return rcNames, nil
+}
+
+func resourceClaimName(pod *corev1.Pod, containerName string, cfg *config.DRADeviceConfig) string {
+	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, containerName)
 	if pod.Name == "" {
-		rcName = fmt.Sprintf("%s-%s-%s", pod.Namespace, rand.String(5), container.Name)
+		rcName = fmt.Sprintf("%s-%s-%s", pod.Namespace, rand.String(5), containerName)
+	}
+	if cfg != nil && cfg.CommonWord != "" {
+		rcName = fmt.Sprintf("%s-%s", rcName, strings.ToLower(cfg.CommonWord))
 	}
 	if len(rcName) > 253 {
 		h := sha256.Sum256([]byte(rcName))
 		rcName = fmt.Sprintf("%s-%x", rcName[:220], h[:4])
 	}
-
-	resourceclaim := a.buildResourceClaim(rcName, pod.Namespace)
-	resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
-
-	// Remove count resource from container since it's now represented in the ResourceClaim
-	a.removeResource(container, countResourceName)
-
-	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		converted, err := a.DeviceConfig.ConvertCores(coreQty)
-		if err != nil {
-			a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
-			return "", err
-		}
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
-		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
-	}
-	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = a.DeviceConfig.ConvertMemory(memQty)
-		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
-	}
-
-	if err := a.addAnnotationSelectors(resourceclaim, pod); err != nil {
-		a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
-		return "", err
-	}
-
-	if err := a.Client.Create(ctx, resourceclaim); err != nil {
-		a.deleteResourceClaims(ctx, pod.Namespace, createdClaims)
-		return "", fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
-	}
-
-	klog.V(4).Infof("Successfully created ResourceClaim %s/%s", pod.Namespace, rcName)
-	return rcName, nil
+	return rcName
 }
 
 // buildResourceClaim creates a ResourceClaim with default selectors.
-func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resourceapi.ResourceClaim {
-	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-
+func (a *MutatingAdmission) buildResourceClaim(name, namespace string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaim {
+	if cfg == nil {
+		cfg = a.DeviceConfig
+	}
 	return &resourceapi.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -171,23 +208,7 @@ func (a *MutatingAdmission) buildResourceClaim(name, namespace string) *resource
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{
 				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: a.DeviceConfig.RequestName,
-						Exactly: &resourceapi.ExactDeviceRequest{
-							AllocationMode: resourceapi.DeviceAllocationModeExactCount,
-							Capacity: &resourceapi.CapacityRequirements{
-								Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
-							},
-							DeviceClassName: deviceClassName,
-							Selectors: []resourceapi.DeviceSelector{
-								{
-									CEL: &resourceapi.CELDeviceSelector{
-										Expression: a.DeviceConfig.TypeSelectorExpression(),
-									},
-								},
-							},
-						},
-					},
+					cfg.NewPrimaryDeviceRequest(),
 				},
 			},
 		},
@@ -219,11 +240,13 @@ func celStringList(raw string) []string {
 // addAnnotationSelectors adds device selectors based on pod annotations.
 // It fails closed: an annotation that yields no usable value is an error,
 // so an allow-list that resolved to empty cannot silently match any device.
-func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod) error {
+func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.ResourceClaim, pod *corev1.Pod, cfg *config.DRADeviceConfig) error {
 	exactly := resourceclaim.Spec.Devices.Requests[0].Exactly
-	draDriverName := a.DeviceConfig.EffectiveDraDriverName()
+	if cfg == nil {
+		cfg = a.DeviceConfig
+	}
+	draDriverName := cfg.EffectiveDraDriverName()
 
-	// Guard against nil pod or missing annotations to prevent panic
 	if pod == nil || pod.Annotations == nil {
 		return nil
 	}
@@ -233,10 +256,10 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		field      string
 		negate     bool
 	}{
-		{a.DeviceConfig.UseUUIDAnnotation, "uuid", false},
-		{a.DeviceConfig.NoUseUUIDAnnotation, "uuid", true},
-		{a.DeviceConfig.UseTypeAnnotation, "productName", false},
-		{a.DeviceConfig.NoUseTypeAnnotation, "productName", true},
+		{cfg.UseUUIDAnnotation, "uuid", false},
+		{cfg.NoUseUUIDAnnotation, "uuid", true},
+		{cfg.UseTypeAnnotation, "productName", false},
+		{cfg.NoUseTypeAnnotation, "productName", true},
 	} {
 		raw, ok := pod.Annotations[sel.annotation]
 		if !ok {

@@ -204,11 +204,29 @@ groups:
 {{- end -}}
 {{- end -}}
 
+{{- define "hami.dra.ascend.deviceClassName" -}}
+{{- if .Values.drivers.ascend.deviceClassName -}}
+{{- .Values.drivers.ascend.deviceClassName -}}
+{{- else -}}
+{{- .Values.ascendDeviceClassName -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hami.dra.ascend.driverName" -}}
+{{- if .Values.drivers.ascend.driverName -}}
+{{- .Values.drivers.ascend.driverName -}}
+{{- else -}}
+{{- .Values.ascendDraDriverName -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "hami.dra.webhook.deviceClassName" -}}
 {{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- include "hami.dra.driver.fake.deviceClassName" . -}}
 {{- else if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
 {{- include "hami.dra.dcu.deviceClassName" . -}}
+{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "ascend" -}}
+{{- include "hami.dra.ascend.deviceClassName" . -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
@@ -219,6 +237,8 @@ groups:
 {{- include "hami.dra.driver.fake.driverName" . -}}
 {{- else if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
 {{- include "hami.dra.dcu.driverName" . -}}
+{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "ascend" -}}
+{{- include "hami.dra.ascend.driverName" . -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}

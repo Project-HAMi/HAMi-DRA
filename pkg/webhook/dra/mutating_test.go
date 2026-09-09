@@ -201,7 +201,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				},
 			}
 
-			err := admission.addAnnotationSelectors(claim, pod)
+			err := admission.addAnnotationSelectors(claim, pod, admission.DeviceConfig)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -255,7 +255,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, admission.addAnnotationSelectors(claim, pod))
+	require.NoError(t, admission.addAnnotationSelectors(claim, pod, cfg))
 	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
 	assert.Len(t, selectors, 2)
 	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["DCU-123"]`, selectors[0].CEL.Expression)
@@ -275,7 +275,7 @@ func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 		DeviceConfig: deviceConfig,
 	}
 
-	claim := admission.buildResourceClaim("test-claim", "default")
+	claim := admission.buildResourceClaim("test-claim", "default", deviceConfig)
 	exactly := claim.Spec.Devices.Requests[0].Exactly
 
 	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
@@ -284,4 +284,40 @@ func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
 		exactly.Selectors[0].CEL.Expression,
 	)
+}
+
+func TestAddAnnotationSelectorsAscend(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices(config.VendorAscend)
+	assert.NoError(t, err)
+	var cfg *config.DRADeviceConfig
+	for _, c := range cfgs {
+		if c.CommonWord == "Ascend310P" {
+			cfg = c
+			break
+		}
+	}
+	require.NotNil(t, cfg)
+	assert.Equal(t, "hami.io/use-Ascend310P-uuid", cfg.UseUUIDAnnotation)
+	assert.Equal(t, "huawei.com/Ascend310P", cfg.ResourceCountName)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				cfg.UseUUIDAnnotation:             "node-4",
+				constants.AscendUseTypeAnnotation: "Ascend310P",
+			},
+		},
+	}
+
+	admission := &MutatingAdmission{DeviceConfig: cfg}
+	claim := admission.buildResourceClaim("npu-claim", "default", cfg)
+	require.NoError(t, admission.addAnnotationSelectors(claim, pod, cfg))
+	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
+	assert.Len(t, selectors, 3)
+	assert.Equal(t,
+		`device.driver == "ascend.project-hami.io" && device.attributes["ascend.project-hami.io"].type == "HAMivNPUCore"`,
+		selectors[0].CEL.Expression,
+	)
+	assert.Equal(t, `device.attributes["ascend.project-hami.io"].uuid in ["node-4"]`, selectors[1].CEL.Expression)
+	assert.Equal(t, `device.attributes["ascend.project-hami.io"].productName in ["Ascend310P"]`, selectors[2].CEL.Expression)
 }

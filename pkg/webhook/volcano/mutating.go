@@ -22,10 +22,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,9 +38,10 @@ import (
 
 // MutatingAdmission mutates API request if necessary.
 type MutatingAdmission struct {
-	Decoder      admission.Decoder
-	Client       client.Client
-	DeviceConfig *config.DRADeviceConfig
+	Decoder       admission.Decoder
+	Client        client.Client
+	DeviceConfig  *config.DRADeviceConfig
+	DeviceConfigs []*config.DRADeviceConfig
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -111,68 +112,91 @@ func (a *MutatingAdmission) deleteResourceClaimTemplates(ctx context.Context, na
 
 // handleTask processes every container in the task and returns the names of
 // the ResourceClaimTemplates created for them.
+func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
+	if len(a.DeviceConfigs) > 0 {
+		return a.DeviceConfigs
+	}
+	if a.DeviceConfig != nil {
+		return []*config.DRADeviceConfig{a.DeviceConfig}
+	}
+	return nil
+}
+
 func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) ([]string, error) {
 	var rctNames []string
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		rctName, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
+		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
 		if err != nil {
 			// Return the names created so far so the caller can clean them up.
 			return rctNames, err
 		}
-		if rctName != "" {
-			rctNames = append(rctNames, rctName)
+		rctNames = append(rctNames, names...)
+	}
+	if len(rctNames) > 0 {
+		for _, cfg := range a.configs() {
+			if cfg != nil && cfg.RuntimeClassName != "" {
+				cfg.ApplyRuntimeClass(&task.Template.Spec)
+				break
+			}
 		}
 	}
 	return rctNames, nil
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) (string, error) {
-	countResourceName := corev1.ResourceName(a.DeviceConfig.ResourceCountName)
-	countQty, ok := container.Resources.Limits[countResourceName]
-	if !ok {
-		return "", nil
-	}
-
-	raw := fmt.Sprintf("%s-%s-%s", namespace, name, container.Name)
-	rctName := raw
-	if len(raw) > 253 {
-		h := sha256.Sum256([]byte(raw))
-		rctName = fmt.Sprintf("%s-%x", raw[:220], h[:4])
-	}
-	resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace)
-
-	resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
-
-	// Remove count resource from container
-	a.removeResource(container, countResourceName)
-
-	if coreQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceCoreName)]; ok {
-		converted, err := a.DeviceConfig.ConvertCores(coreQty)
-		if err != nil {
-			return "", err
+func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) ([]string, error) {
+	var rctNames []string
+	for _, cfg := range a.configs() {
+		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
+		countQty, ok := container.Resources.Limits[countResourceName]
+		if !ok {
+			continue
 		}
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
-		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceCoreName))
-	}
-	if memQty, ok := container.Resources.Limits[corev1.ResourceName(a.DeviceConfig.ResourceMemoryName)]; ok {
-		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = a.DeviceConfig.ConvertMemory(memQty)
-		a.removeResource(container, corev1.ResourceName(a.DeviceConfig.ResourceMemoryName))
-	}
 
-	if err := a.Client.Create(ctx, resourceclaimtemplate); err != nil {
-		return "", fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
+		raw := fmt.Sprintf("%s-%s-%s", namespace, name, container.Name)
+		if cfg.CommonWord != "" {
+			raw = fmt.Sprintf("%s-%s", raw, strings.ToLower(cfg.CommonWord))
+		}
+		rctName := raw
+		if len(raw) > 253 {
+			h := sha256.Sum256([]byte(raw))
+			rctName = fmt.Sprintf("%s-%x", raw[:220], h[:4])
+		}
+		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, cfg)
+
+		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
+
+		a.removeResource(container, countResourceName)
+
+		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
+			converted, err := cfg.ConvertCores(coreQty)
+			if err != nil {
+				return rctNames, err
+			}
+			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
+			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
+		}
+		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
+			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = cfg.ConvertMemory(memQty)
+			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
+		}
+
+		if err := a.Client.Create(ctx, resourceclaimtemplate); err != nil {
+			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
+		}
+
+		container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rctName})
+
+		klog.V(4).Infof("Successfully created ResourceClaimTemplate %s/%s", namespace, rctName)
+		rctNames = append(rctNames, rctName)
 	}
-
-	container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rctName})
-
-	klog.V(4).Infof("Successfully created ResourceClaimTemplate %s/%s", namespace, rctName)
-	return rctName, nil
+	return rctNames, nil
 }
 
-func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *resourceapi.ResourceClaimTemplate {
-	deviceClassName := a.DeviceConfig.EffectiveDeviceClassName()
-
+func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {
+	if cfg == nil {
+		cfg = a.DeviceConfig
+	}
 	return &resourceapi.ResourceClaimTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -182,23 +206,7 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string) *
 			Spec: resourceapi.ResourceClaimSpec{
 				Devices: resourceapi.DeviceClaim{
 					Requests: []resourceapi.DeviceRequest{
-						{
-							Name: a.DeviceConfig.RequestName,
-							Exactly: &resourceapi.ExactDeviceRequest{
-								AllocationMode: resourceapi.DeviceAllocationModeExactCount,
-								Capacity: &resourceapi.CapacityRequirements{
-									Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
-								},
-								DeviceClassName: deviceClassName,
-								Selectors: []resourceapi.DeviceSelector{
-									{
-										CEL: &resourceapi.CELDeviceSelector{
-											Expression: a.DeviceConfig.TypeSelectorExpression(),
-										},
-									},
-								},
-							},
-						},
+						cfg.NewPrimaryDeviceRequest(),
 					},
 				},
 			},

@@ -130,11 +130,12 @@ func Run(ctx context.Context, opts *options.Options) error {
 		klog.Errorf("Failed to unmarshal device config: %v", err)
 		return err
 	}
-	deviceConfig, err := deviceConfigFile.DRADevice(opts.DeviceVendor)
+	deviceConfigs, err := deviceConfigFile.DRADevices(opts.DeviceVendor)
 	if err != nil {
 		klog.Errorf("Failed to resolve DRA device config: %v", err)
 		return err
 	}
+	deviceConfig := deviceConfigs[0]
 	// Create a new scheme and add default Kubernetes schemes
 	sch := runtime.NewScheme()
 	if err := scheme.AddToScheme(sch); err != nil {
@@ -197,12 +198,14 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.Decoder = decoder
 	mutatingAdmission.Client = hookManager.GetClient()
 	mutatingAdmission.DeviceConfig = deviceConfig
+	mutatingAdmission.DeviceConfigs = deviceConfigs
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
 
 	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}
 	mutatingAdmissionVolcano.Decoder = decoder
 	mutatingAdmissionVolcano.Client = hookManager.GetClient()
 	mutatingAdmissionVolcano.DeviceConfig = deviceConfig
+	mutatingAdmissionVolcano.DeviceConfigs = deviceConfigs
 	hookServer.Register("/mutate-volcano", &webhook.Admission{Handler: mutatingAdmissionVolcano})
 
 	validatingAdmission := &dra.ValidatingAdmission{}

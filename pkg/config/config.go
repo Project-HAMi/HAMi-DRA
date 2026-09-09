@@ -93,6 +93,7 @@ type Config struct {
 	Vendor string       `yaml:"vendor"`
 	Nvidia NvidiaConfig `yaml:"nvidia"`
 	Hygon  HygonConfig  `yaml:"hygon"`
+	Ascend AscendConfig `yaml:"ascend"`
 }
 
 // HygonConfig holds DCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).
@@ -111,6 +112,37 @@ type HygonConfig struct {
 
 	// ReferenceComputeUnits converts hygon.com/dcucores (percentage) to absolute cores for DRA.
 	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
+}
+
+// AscendConfig holds NPU DRA settings for ascend-dra-driver (ascend.project-hami.io).
+// Devices lists HAMi vNPU chips (commonWord + resource names). Empty Devices uses
+// DefaultAscendVNPUs. Legacy ResourceCountName/Mem/Core still work as a single chip.
+type AscendConfig struct {
+	DeviceClassName  string `yaml:"deviceClassName"`
+	DraDriverName    string `yaml:"draDriverName"`
+	RequestName      string `yaml:"requestName"`
+	RuntimeClassName string `yaml:"runtimeClassName"`
+
+	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
+	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
+
+	Devices []AscendVNPUConfig `yaml:"devices"`
+
+	// Legacy single-chip fields. Used only when Devices is empty.
+	ResourceCountName   string `yaml:"resourceCountName"`
+	ResourceMemoryName  string `yaml:"resourceMemoryName"`
+	ResourceCoreName    string `yaml:"resourceCoreName"`
+	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
+	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`
+}
+
+// AscendVNPUConfig is one HAMi Ascend chip (same commonWord / resource names as HAMi).
+type AscendVNPUConfig struct {
+	CommonWord         string `yaml:"commonWord"`
+	ChipName           string `yaml:"chipName"`
+	ResourceName       string `yaml:"resourceName"`
+	ResourceMemoryName string `yaml:"resourceMemoryName"`
+	ResourceCoreName   string `yaml:"resourceCoreName"`
 }
 
 type NvidiaConfig struct {
