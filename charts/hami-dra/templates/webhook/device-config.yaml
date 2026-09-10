@@ -227,13 +227,13 @@ data:
       resourceMemoryName: {{ .Values.mluResourceMem }}
       resourceCoreName: {{ .Values.mluResourceCores }}
     hygon:
-      resourceCountName: {{ .Values.dcuResourceName }}
-      resourceMemoryName: {{ .Values.dcuResourceMem }}
-      resourceCoreName: {{ .Values.dcuResourceCores }}
-      deviceClassName: {{ include "hami.dra.dcu.deviceClassName" . }}
-      draDriverName: {{ include "hami.dra.dcu.driverName" . }}
-      requestName: dcu
-      referenceComputeUnits: {{ .Values.dcuReferenceComputeUnits }}
+      resourceCountName: {{ .Values.hcuResourceName }}
+      resourceMemoryName: {{ .Values.hcuResourceMem }}
+      resourceCoreName: {{ .Values.hcuResourceCores }}
+      deviceClassName: {{ include "hami.dra.hcu.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.hcu.driverName" . }}
+      requestName: hcu
+      referenceComputeUnits: {{ .Values.hcuReferenceComputeUnits }}
     vendor: {{ include "hami.dra.webhook.deviceVendor" . }}
     metax:
       resourceCountName: "metax-tech.com/gpu"

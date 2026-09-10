@@ -27,9 +27,9 @@ import (
 func TestDRADeviceHygonDefaults(t *testing.T) {
 	cfg, err := (&Config{}).DRADevice(VendorHygon)
 	assert.NoError(t, err)
-	assert.Equal(t, "hygon.com/dcunum", cfg.ResourceCountName)
+	assert.Equal(t, "hygon.com/hcunum", cfg.ResourceCountName)
 	assert.Equal(t, "dra.hygon.com", cfg.EffectiveDeviceClassName())
-	assert.Equal(t, "dcu", cfg.RequestName)
+	assert.Equal(t, "hcu", cfg.RequestName)
 }
 
 func TestConvertCoresWithReferenceComputeUnits(t *testing.T) {

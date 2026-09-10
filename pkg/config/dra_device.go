@@ -44,7 +44,7 @@ type DRADeviceConfig struct {
 	UseTypeAnnotation   string
 	NoUseTypeAnnotation string
 
-	// ReferenceComputeUnits converts hygon.com/dcucores percentage to absolute cores when > 0.
+	// ReferenceComputeUnits converts hygon.com/hcucores percentage to absolute cores when > 0.
 	ReferenceComputeUnits int64
 }
 
@@ -77,7 +77,7 @@ func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quant
 
 func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quantity, error) {
 	if c.DeviceType == constants.HygonDeviceType && c.ReferenceComputeUnits <= 0 {
-		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/dcucores requests")
+		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/hcucores requests")
 	}
 	if c.ReferenceComputeUnits > 0 {
 		pct := coreQty.Value()
@@ -115,12 +115,12 @@ func draDeviceFromHygon(c *HygonConfig) *DRADeviceConfig {
 		c = &HygonConfig{}
 	}
 	cfg := &DRADeviceConfig{
-		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "hygon.com/dcunum"),
-		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "hygon.com/dcumem"),
-		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "hygon.com/dcucores"),
+		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "hygon.com/hcunum"),
+		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "hygon.com/hcumem"),
+		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "hygon.com/hcucores"),
 		DeviceClassName:       firstNonEmpty(c.DeviceClassName, constants.HygonDraDriver),
 		DraDriverName:         firstNonEmpty(c.DraDriverName, constants.HygonDraDriver),
-		RequestName:           firstNonEmpty(c.RequestName, "dcu"),
+		RequestName:           firstNonEmpty(c.RequestName, "hcu"),
 		DeviceType:            constants.HygonDeviceType,
 		UseUUIDAnnotation:     firstNonEmpty(c.UseUUIDAnnotation, constants.HygonUseUUIDAnnotation),
 		NoUseUUIDAnnotation:   firstNonEmpty(c.NoUseUUIDAnnotation, constants.HygonNoUseUUIDAnnotation),

@@ -233,7 +233,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				constants.HygonUseUUIDAnnotation: "DCU-123",
+				constants.HygonUseUUIDAnnotation: "HCU-123",
 				constants.HygonUseTypeAnnotation: "K100",
 			},
 		},
@@ -245,7 +245,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 			Devices: resourceapi.DeviceClaim{
 				Requests: []resourceapi.DeviceRequest{
 					{
-						Name: "dcu",
+						Name: "hcu",
 						Exactly: &resourceapi.ExactDeviceRequest{
 							Selectors: []resourceapi.DeviceSelector{},
 						},
@@ -258,7 +258,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 	require.NoError(t, admission.addAnnotationSelectors(claim, pod))
 	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
 	assert.Len(t, selectors, 2)
-	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["DCU-123"]`, selectors[0].CEL.Expression)
+	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["HCU-123"]`, selectors[0].CEL.Expression)
 	assert.Equal(t, `device.attributes["dra.hygon.com"].productName in ["K100"]`, selectors[1].CEL.Expression)
 }
 

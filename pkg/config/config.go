@@ -95,7 +95,7 @@ type Config struct {
 	Hygon  HygonConfig  `yaml:"hygon"`
 }
 
-// HygonConfig holds DCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).
+// HygonConfig holds HCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).
 type HygonConfig struct {
 	ResourceCountName  string `yaml:"resourceCountName"`
 	ResourceMemoryName string `yaml:"resourceMemoryName"`
@@ -109,7 +109,7 @@ type HygonConfig struct {
 	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
 	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
 
-	// ReferenceComputeUnits converts hygon.com/dcucores (percentage) to absolute cores for DRA.
+	// ReferenceComputeUnits converts hygon.com/hcucores (percentage) to absolute cores for DRA.
 	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
 }
 

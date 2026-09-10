@@ -188,37 +188,37 @@ groups:
 {{- end }}
 {{- end -}}
 
-{{- define "hami.dra.dcu.deviceClassName" -}}
-{{- if .Values.drivers.dcu.deviceClassName -}}
-{{- .Values.drivers.dcu.deviceClassName -}}
+{{- define "hami.dra.hcu.deviceClassName" -}}
+{{- if .Values.drivers.hcu.deviceClassName -}}
+{{- .Values.drivers.hcu.deviceClassName -}}
 {{- else -}}
-{{- .Values.dcuDeviceClassName -}}
+{{- .Values.hcuDeviceClassName -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "hami.dra.dcu.driverName" -}}
-{{- if .Values.drivers.dcu.driverName -}}
-{{- .Values.drivers.dcu.driverName -}}
+{{- define "hami.dra.hcu.driverName" -}}
+{{- if .Values.drivers.hcu.driverName -}}
+{{- .Values.drivers.hcu.driverName -}}
 {{- else -}}
-{{- .Values.dcuDraDriverName -}}
+{{- .Values.hcuDraDriverName -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "hami.dra.webhook.deviceClassName" -}}
-{{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
-{{- include "hami.dra.driver.fake.deviceClassName" . -}}
-{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- include "hami.dra.dcu.deviceClassName" . -}}
+{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
+{{- include "hami.dra.hcu.deviceClassName" . -}}
+{{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
+{{- .Values.drivers.fake.deviceClassName -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "hami.dra.webhook.driverName" -}}
-{{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
-{{- include "hami.dra.driver.fake.driverName" . -}}
-{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- include "hami.dra.dcu.driverName" . -}}
+{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
+{{- include "hami.dra.hcu.driverName" . -}}
+{{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
+{{- .Values.drivers.fake.driverName -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
