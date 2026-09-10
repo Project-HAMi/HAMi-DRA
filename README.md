@@ -51,9 +51,9 @@ helm install hami-dra hami-dra/hami-dra \
 
 Then [use the same as hami](https://project-hami.io/zh/docs/userguide/nvidia-device/examples/use-exclusive-card/).
 
-### Hygon DCU
+### Hygon HCU
 
-For clusters running Hygon DCU with [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver), see [docs/hygon-dcu.md](./docs/hygon-dcu.md).
+For clusters running Hygon HCU with [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver), see [docs/hygon-hcu.md](./docs/hygon-hcu.md).
 
 ## Configuration
 
@@ -67,7 +67,7 @@ resourceMem: "nvidia.com/gpumem"
 resourceCores: "nvidia.com/gpucores"
 ```
 
-Hygon DCU and Huawei Ascend use the same webhook with `deviceVendor` set to `hygon` or `ascend`. See [Hygon DCU](./docs/hygon-dcu.md) and [Ascend DRA](./docs/ascend-dra.md).
+Hygon HCU and Huawei Ascend use the same webhook with `deviceVendor` set to `hygon` or `ascend`. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
 
 ### Monitor Component
 

@@ -29,12 +29,12 @@ const (
 	NvidiaDeviceType = "hami-gpu"
 
 	HygonDraDriver  = "dra.hygon.com"
-	HygonDeviceType = "dcu"
+	HygonDeviceType = "hcu"
 
 	HygonUseUUIDAnnotation   = "hygon.com/use-gpuuuid"
 	HygonNoUseUUIDAnnotation = "hygon.com/nouse-gpuuuid"
-	HygonUseTypeAnnotation   = "hygon.com/use-dcutype"
-	HygonNoUseTypeAnnotation = "hygon.com/nouse-dcutype"
+	HygonUseTypeAnnotation   = "hygon.com/use-hcutype"
+	HygonNoUseTypeAnnotation = "hygon.com/nouse-hcutype"
 
 	// Ascend DRA driver (ascend-dra-driver). HAMivNPUCore is the currently
 	// validated allocation mode; traditional full-card / vNPU DeviceClasses

@@ -233,7 +233,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				constants.HygonUseUUIDAnnotation: "DCU-123",
+				constants.HygonUseUUIDAnnotation: "HCU-123",
 				constants.HygonUseTypeAnnotation: "K100",
 			},
 		},
@@ -245,7 +245,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 			Devices: resourceapi.DeviceClaim{
 				Requests: []resourceapi.DeviceRequest{
 					{
-						Name: "dcu",
+						Name: "hcu",
 						Exactly: &resourceapi.ExactDeviceRequest{
 							Selectors: []resourceapi.DeviceSelector{},
 						},
@@ -258,7 +258,7 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 	require.NoError(t, admission.addAnnotationSelectors(claim, pod, cfg))
 	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
 	assert.Len(t, selectors, 2)
-	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["DCU-123"]`, selectors[0].CEL.Expression)
+	assert.Equal(t, `device.attributes["dra.hygon.com"].uuid in ["HCU-123"]`, selectors[0].CEL.Expression)
 	assert.Equal(t, `device.attributes["dra.hygon.com"].productName in ["K100"]`, selectors[1].CEL.Expression)
 }
 
@@ -320,4 +320,19 @@ func TestAddAnnotationSelectorsAscend(t *testing.T) {
 	)
 	assert.Equal(t, `device.attributes["ascend.project-hami.io"].uuid in ["node-4"]`, selectors[1].CEL.Expression)
 	assert.Equal(t, `device.attributes["ascend.project-hami.io"].productName in ["Ascend310P"]`, selectors[2].CEL.Expression)
+}
+
+func TestResourceClaimNameDNS1123Label(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "very-long-namespace-name-for-testing",
+			Name:      "very-long-pod-name-that-would-exceed-the-label-limit",
+		},
+	}
+	cfg := &config.DRADeviceConfig{CommonWord: "Ascend910B4-1"}
+	name := resourceClaimName(pod, "very-long-container-name", cfg)
+	assert.LessOrEqual(t, len(name), dns1123LabelMaxLength)
+	assert.NotContains(t, name, "--")
+	short := resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", nil)
+	assert.Equal(t, "ns-pod-ctr", short)
 }

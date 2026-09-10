@@ -127,11 +127,10 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
 		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
+		rctNames = append(rctNames, names...)
 		if err != nil {
-			// Return the names created so far so the caller can clean them up.
 			return rctNames, err
 		}
-		rctNames = append(rctNames, names...)
 	}
 	if len(rctNames) > 0 {
 		for _, cfg := range a.configs() {
@@ -157,11 +156,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		if cfg.CommonWord != "" {
 			raw = fmt.Sprintf("%s-%s", raw, strings.ToLower(cfg.CommonWord))
 		}
-		rctName := raw
-		if len(raw) > 253 {
-			h := sha256.Sum256([]byte(raw))
-			rctName = fmt.Sprintf("%s-%x", raw[:220], h[:4])
-		}
+		rctName := truncateDNS1123Label(raw)
 		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, cfg)
 
 		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
@@ -191,6 +186,22 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		rctNames = append(rctNames, rctName)
 	}
 	return rctNames, nil
+}
+
+const dns1123LabelMaxLength = 63
+
+func truncateDNS1123Label(name string) string {
+	if len(name) <= dns1123LabelMaxLength {
+		return name
+	}
+	h := sha256.Sum256([]byte(name))
+	suffix := fmt.Sprintf("-%x", h[:4])
+	prefixLen := dns1123LabelMaxLength - len(suffix)
+	prefix := strings.TrimRight(name[:prefixLen], "-")
+	if prefix == "" {
+		return strings.TrimLeft(suffix, "-")
+	}
+	return prefix + suffix
 }
 
 func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {

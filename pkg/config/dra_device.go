@@ -53,7 +53,7 @@ type DRADeviceConfig struct {
 	// RuntimeClassName is injected onto Pods/Job templates when unset.
 	RuntimeClassName string
 
-	// ReferenceComputeUnits converts hygon.com/dcucores percentage to absolute cores when > 0.
+	// ReferenceComputeUnits converts hygon.com/hcucores percentage to absolute cores when > 0.
 	ReferenceComputeUnits int64
 }
 
@@ -129,7 +129,7 @@ func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quant
 
 func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quantity, error) {
 	if c.DeviceType == constants.HygonDeviceType && c.ReferenceComputeUnits <= 0 {
-		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/dcucores requests")
+		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/hcucores requests")
 	}
 	if c.ReferenceComputeUnits > 0 {
 		pct := coreQty.Value()
@@ -167,12 +167,12 @@ func draDeviceFromHygon(c *HygonConfig) *DRADeviceConfig {
 		c = &HygonConfig{}
 	}
 	cfg := &DRADeviceConfig{
-		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "hygon.com/dcunum"),
-		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "hygon.com/dcumem"),
-		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "hygon.com/dcucores"),
+		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "hygon.com/hcunum"),
+		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "hygon.com/hcumem"),
+		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "hygon.com/hcucores"),
 		DeviceClassName:       firstNonEmpty(c.DeviceClassName, constants.HygonDraDriver),
 		DraDriverName:         firstNonEmpty(c.DraDriverName, constants.HygonDraDriver),
-		RequestName:           firstNonEmpty(c.RequestName, "dcu"),
+		RequestName:           firstNonEmpty(c.RequestName, "hcu"),
 		DeviceType:            constants.HygonDeviceType,
 		UseUUIDAnnotation:     firstNonEmpty(c.UseUUIDAnnotation, constants.HygonUseUUIDAnnotation),
 		NoUseUUIDAnnotation:   firstNonEmpty(c.NoUseUUIDAnnotation, constants.HygonNoUseUUIDAnnotation),
@@ -224,7 +224,7 @@ func ascendNoUseUUIDAnnotation(commonWord string) string {
 	return fmt.Sprintf("hami.io/no-use-%s-uuid", commonWord)
 }
 
-func draDevicesFromAscend(c *AscendConfig) []*DRADeviceConfig {
+func draDevicesFromAscend(c *AscendConfig) ([]*DRADeviceConfig, []int) {
 	if c == nil {
 		c = &AscendConfig{}
 	}
@@ -247,8 +247,10 @@ func draDevicesFromAscend(c *AscendConfig) []*DRADeviceConfig {
 	}
 
 	out := make([]*DRADeviceConfig, 0, len(vnpus))
-	for _, vnpu := range vnpus {
+	var emptyResourceNameIndexes []int
+	for i, vnpu := range vnpus {
 		if vnpu.ResourceName == "" {
+			emptyResourceNameIndexes = append(emptyResourceNameIndexes, i)
 			continue
 		}
 		word := vnpu.CommonWord
@@ -278,7 +280,7 @@ func draDevicesFromAscend(c *AscendConfig) []*DRADeviceConfig {
 			ReferenceComputeUnits: 0,
 		})
 	}
-	return out
+	return out, emptyResourceNameIndexes
 }
 
 func (c *Config) DRADevices(vendor string) ([]*DRADeviceConfig, error) {
@@ -292,8 +294,11 @@ func (c *Config) DRADevices(vendor string) ([]*DRADeviceConfig, error) {
 	case VendorHygon:
 		return []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}, nil
 	case VendorAscend:
-		cfgs := draDevicesFromAscend(&c.Ascend)
+		cfgs, emptyIndexes := draDevicesFromAscend(&c.Ascend)
 		if len(cfgs) == 0 {
+			if len(emptyIndexes) > 0 {
+				return nil, fmt.Errorf("no ascend devices configured: empty resourceName at indexes %v", emptyIndexes)
+			}
 			return nil, fmt.Errorf("no ascend devices configured")
 		}
 		return cfgs, nil

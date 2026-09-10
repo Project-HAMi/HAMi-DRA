@@ -30,9 +30,9 @@ import (
 func TestDRADeviceHygonDefaults(t *testing.T) {
 	cfg, err := (&Config{}).DRADevice(VendorHygon)
 	assert.NoError(t, err)
-	assert.Equal(t, "hygon.com/dcunum", cfg.ResourceCountName)
+	assert.Equal(t, "hygon.com/hcunum", cfg.ResourceCountName)
 	assert.Equal(t, "dra.hygon.com", cfg.EffectiveDeviceClassName())
-	assert.Equal(t, "dcu", cfg.RequestName)
+	assert.Equal(t, "hcu", cfg.RequestName)
 }
 
 func TestConvertCoresWithReferenceComputeUnits(t *testing.T) {
@@ -135,4 +135,15 @@ func TestApplyRuntimeClass(t *testing.T) {
 	spec.RuntimeClassName = &existing
 	cfg.ApplyRuntimeClass(spec)
 	assert.Equal(t, "custom", *spec.RuntimeClassName)
+}
+
+func TestDRADeviceAscendEmptyResourceNameIndexes(t *testing.T) {
+	_, err := (&Config{Ascend: AscendConfig{
+		Devices: []AscendVNPUConfig{
+			{CommonWord: "bad-key"},
+			{CommonWord: "also-bad"},
+		},
+	}}).DRADevices(VendorAscend)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty resourceName at indexes [0 1]")
 }

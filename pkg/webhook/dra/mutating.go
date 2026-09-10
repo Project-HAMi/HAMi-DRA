@@ -64,6 +64,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		container := &pod.Spec.Containers[i]
 		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList)
 		if err != nil {
+			a.deleteResourceClaims(ctx, pod.Namespace, append(rcNameList, rcNames...))
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		for _, rcName := range rcNames {
@@ -180,6 +181,10 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	return rcNames, nil
 }
 
+// dns1123LabelMaxLength is the Kubernetes DNS-1123 label limit, which applies
+// to PodResourceClaim.Name (and remains valid for ResourceClaim object names).
+const dns1123LabelMaxLength = 63
+
 func resourceClaimName(pod *corev1.Pod, containerName string, cfg *config.DRADeviceConfig) string {
 	rcName := fmt.Sprintf("%s-%s-%s", pod.Namespace, pod.Name, containerName)
 	if pod.Name == "" {
@@ -188,11 +193,21 @@ func resourceClaimName(pod *corev1.Pod, containerName string, cfg *config.DRADev
 	if cfg != nil && cfg.CommonWord != "" {
 		rcName = fmt.Sprintf("%s-%s", rcName, strings.ToLower(cfg.CommonWord))
 	}
-	if len(rcName) > 253 {
-		h := sha256.Sum256([]byte(rcName))
-		rcName = fmt.Sprintf("%s-%x", rcName[:220], h[:4])
+	return truncateDNS1123Label(rcName)
+}
+
+func truncateDNS1123Label(name string) string {
+	if len(name) <= dns1123LabelMaxLength {
+		return name
 	}
-	return rcName
+	h := sha256.Sum256([]byte(name))
+	suffix := fmt.Sprintf("-%x", h[:4])
+	prefixLen := dns1123LabelMaxLength - len(suffix)
+	prefix := strings.TrimRight(name[:prefixLen], "-")
+	if prefix == "" {
+		return strings.TrimLeft(suffix, "-")
+	}
+	return prefix + suffix
 }
 
 // buildResourceClaim creates a ResourceClaim with default selectors.

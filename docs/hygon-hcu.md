@@ -1,8 +1,8 @@
-# Hygon DCU
+# Hygon HCU
 
-Deploy HAMi-DRA webhook for Hygon DCU clusters that already run [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver).
+Deploy HAMi-DRA webhook for Hygon HCU clusters that already run [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver).
 
-This chart deploys only the mutating/validating webhook and TLS certificates. The DCU DRA driver and `DeviceClass` (`dra.hygon.com`) must be deployed separately via k8s-hcu-dra-driver.
+This chart deploys only the mutating/validating webhook and TLS certificates. The HCU DRA driver and `DeviceClass` (`dra.hygon.com`) must be deployed separately via k8s-hcu-dra-driver.
 
 ## Prerequisites
 
@@ -46,25 +46,25 @@ helm upgrade hami-dra ./charts/hami-dra -n hami-system \
 
 | Value | Recommended | Notes |
 |-------|-------------|-------|
-| `deviceVendor` | `hygon` | Switches webhook to Hygon DCU resource names and `dra.hygon.com` driver. |
+| `deviceVendor` | `hygon` | Switches webhook to Hygon HCU resource names and `dra.hygon.com` driver. |
 | `drivers.nvidia.enabled` | `false` | Do not deploy the NVIDIA DRA driver DaemonSet. |
-| `drivers.dcu.deviceClassName` / `driverName` | empty (default) | Optional overrides for webhook config; falls back to `dcuDeviceClassName` / `dcuDraDriverName`. Does not deploy a driver. |
-| `monitor.enabled` | `false` | Monitor is NVIDIA-oriented today; disable for DCU-only clusters. |
+| `drivers.hcu.deviceClassName` / `driverName` | empty (default) | Optional overrides for webhook config; falls back to `hcuDeviceClassName` / `hcuDraDriverName`. Does not deploy a driver. |
+| `monitor.enabled` | `false` | Monitor is NVIDIA-oriented today; disable for HCU-only clusters. |
 | `certs.certManager.enabled` | `true` (default) | Uses cert-manager for webhook TLS. |
 
-DCU resource names and driver identifiers use chart defaults in `values.yaml` (no override needed in most cases):
+HCU resource names and driver identifiers use chart defaults in `values.yaml` (no override needed in most cases):
 
 ```yaml
-dcuResourceName: "hygon.com/dcunum"
-dcuResourceMem: "hygon.com/dcumem"
-dcuResourceCores: "hygon.com/dcucores"
-dcuDeviceClassName: dra.hygon.com
-dcuDraDriverName: dra.hygon.com
+hcuResourceName: "hygon.com/hcunum"
+hcuResourceMem: "hygon.com/hcumem"
+hcuResourceCores: "hygon.com/hcucores"
+hcuDeviceClassName: dra.hygon.com
+hcuDraDriverName: dra.hygon.com
 ```
 
-### Fractional compute (`hygon.com/dcucores`)
+### Fractional compute (`hygon.com/hcucores`)
 
-When Pods request compute as a percentage via `hygon.com/dcucores`, set `dcuReferenceComputeUnits` to one card's total compute units from the cluster:
+When Pods request compute as a percentage via `hygon.com/hcucores`, set `hcuReferenceComputeUnits` to one card's total compute units from the cluster:
 
 ```bash
 kubectl get resourceslice -o yaml
@@ -77,20 +77,20 @@ helm upgrade hami-dra ./charts/hami-dra -n hami-system \
   --set deviceVendor=hygon \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=false \
-  --set dcuReferenceComputeUnits=128
+  --set hcuReferenceComputeUnits=128
 ```
 
-For whole-card requests only (`hygon.com/dcunum` without `dcumem` / `dcucores`), leave `dcuReferenceComputeUnits` at `0` (default).
+For whole-card requests only (`hygon.com/hcunum` without `hcumem` / `hcucores`), leave `hcuReferenceComputeUnits` at `0` (default).
 
 ## What gets deployed
 
-| Component | Hygon DCU install | Default NVIDIA install |
+| Component | Hygon HCU install | Default NVIDIA install |
 |-----------|-------------------|------------------------|
 | hami-dra-webhook | Yes (Hygon vendor) | Yes (NVIDIA vendor) |
 | cert-manager resources | Yes | Yes |
 | NVIDIA DRA driver DaemonSet | No | Yes |
 | hami-dra-monitor | No | Yes |
-| DCU DRA driver | External (k8s-hcu-dra-driver) | N/A |
+| HCU DRA driver | External (k8s-hcu-dra-driver) | N/A |
 
 ## Testing without DCU hardware
 
