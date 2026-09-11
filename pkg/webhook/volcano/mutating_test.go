@@ -277,7 +277,7 @@ func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 		},
 	}
 
-	template := admission.buildResourceClaimTemplate("test-template", "default")
+	template := admission.buildResourceClaimTemplate("test-template", "default", admission.DeviceConfig)
 	exactly := template.Spec.Spec.Devices.Requests[0].Exactly
 
 	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)

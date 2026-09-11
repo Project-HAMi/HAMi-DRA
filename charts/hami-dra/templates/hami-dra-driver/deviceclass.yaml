@@ -1,5 +1,5 @@
-{{- if and .Values.drivers.fake.enabled .Values.drivers.dcu.enabled (eq (include "hami.dra.driver.fake.profile" .) "hygon") }}
-{{- fail "drivers.fake.enabled (profile=hygon) and drivers.dcu.enabled cannot both be true: both would create DeviceClass dra.hygon.com (or the same custom name). Use fake alone for testing, or the real DCU driver alone." -}}
+{{- if and .Values.drivers.fake.enabled .Values.drivers.hcu.enabled (eq (include "hami.dra.driver.fake.profile" .) "hygon") }}
+{{- fail "drivers.fake.enabled (profile=hygon) and drivers.hcu.enabled cannot both be true: both would create DeviceClass dra.hygon.com (or the same custom name). Use fake alone for testing, or the real HCU driver alone." -}}
 {{- end }}
 {{- if .Values.drivers.nvidia.enabled }}
 apiVersion: resource.k8s.io/v1

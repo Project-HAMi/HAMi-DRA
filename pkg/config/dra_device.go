@@ -18,7 +18,10 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -27,6 +30,7 @@ import (
 const (
 	VendorNvidia = "nvidia"
 	VendorHygon  = "hygon"
+	VendorAscend = "ascend"
 )
 
 // DRADeviceConfig holds runtime settings for converting device-plugin resources to DRA claims.
@@ -38,11 +42,16 @@ type DRADeviceConfig struct {
 	DraDriverName      string
 	RequestName        string
 	DeviceType         string
+	// CommonWord is the HAMi chip key (e.g. Ascend310P). Empty for NVIDIA/Hygon.
+	CommonWord string
 
 	UseUUIDAnnotation   string
 	NoUseUUIDAnnotation string
 	UseTypeAnnotation   string
 	NoUseTypeAnnotation string
+
+	// RuntimeClassName is injected onto Pods/Job templates when unset.
+	RuntimeClassName string
 
 	// ReferenceComputeUnits converts hygon.com/hcucores percentage to absolute cores when > 0.
 	ReferenceComputeUnits int64
@@ -64,10 +73,53 @@ func (c *DRADeviceConfig) EffectiveDraDriverName() string {
 
 func (c *DRADeviceConfig) TypeSelectorExpression() string {
 	driver := c.EffectiveDraDriverName()
-	if c.DeviceType == constants.HygonDeviceType {
+	if c.selectorIncludesDriver() {
 		return fmt.Sprintf(`device.driver == "%s" && device.attributes["%s"].type == "%s"`, driver, driver, c.DeviceType)
 	}
 	return fmt.Sprintf(`device.attributes["%s"].type == "%s"`, driver, c.DeviceType)
+}
+
+func (c *DRADeviceConfig) selectorIncludesDriver() bool {
+	switch c.DeviceType {
+	case constants.HygonDeviceType, constants.AscendHAMivNPUCoreDeviceType:
+		return true
+	default:
+		return false
+	}
+}
+
+// NewPrimaryDeviceRequest builds the HAMivNPUCore (or GPU/DCU) Exactly request.
+// Mixed-cluster fallback should later set FirstAvailable with this Exact request
+// as the first DeviceSubRequest and traditional vNPU DeviceClasses after it
+// (feature gate DRAPrioritizedList). Keep capacity/config per subrequest; do not
+// OR both device types in a single CEL selector.
+func (c *DRADeviceConfig) NewPrimaryDeviceRequest() resourceapi.DeviceRequest {
+	return resourceapi.DeviceRequest{
+		Name: c.RequestName,
+		Exactly: &resourceapi.ExactDeviceRequest{
+			AllocationMode: resourceapi.DeviceAllocationModeExactCount,
+			Capacity: &resourceapi.CapacityRequirements{
+				Requests: make(map[resourceapi.QualifiedName]resource.Quantity),
+			},
+			DeviceClassName: c.EffectiveDeviceClassName(),
+			Selectors: []resourceapi.DeviceSelector{
+				{
+					CEL: &resourceapi.CELDeviceSelector{
+						Expression: c.TypeSelectorExpression(),
+					},
+				},
+			},
+		},
+	}
+}
+
+// ApplyRuntimeClass sets spec.runtimeClassName when configured and the pod left it empty.
+func (c *DRADeviceConfig) ApplyRuntimeClass(podSpec *corev1.PodSpec) {
+	if c == nil || c.RuntimeClassName == "" || podSpec == nil || podSpec.RuntimeClassName != nil {
+		return
+	}
+	name := c.RuntimeClassName
+	podSpec.RuntimeClassName = &name
 }
 
 func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quantity {
@@ -131,19 +183,136 @@ func draDeviceFromHygon(c *HygonConfig) *DRADeviceConfig {
 	return cfg
 }
 
-func (c *Config) DRADevice(vendor string) (*DRADeviceConfig, error) {
+// DefaultAscendVNPUs matches HAMi charts/hami scheduler device-config vnpus.configs.
+func DefaultAscendVNPUs() []AscendVNPUConfig {
+	chips := []string{
+		"Ascend910A",
+		"Ascend910B2",
+		"Ascend910B3",
+		"Ascend910B4-1",
+		"Ascend910B4",
+		"Ascend310P",
+		"Ascend910C",
+	}
+	chipName := map[string]string{
+		"Ascend910A":    "910A",
+		"Ascend910B2":   "910B2",
+		"Ascend910B3":   "910B3",
+		"Ascend910B4-1": "910B4-1",
+		"Ascend910B4":   "910B4",
+		"Ascend310P":    "310P3",
+		"Ascend910C":    "Ascend910",
+	}
+	out := make([]AscendVNPUConfig, 0, len(chips))
+	for _, word := range chips {
+		out = append(out, AscendVNPUConfig{
+			CommonWord:         word,
+			ChipName:           chipName[word],
+			ResourceName:       "huawei.com/" + word,
+			ResourceMemoryName: "huawei.com/" + word + "-memory",
+			ResourceCoreName:   "huawei.com/" + word + "-core",
+		})
+	}
+	return out
+}
+
+func ascendUseUUIDAnnotation(commonWord string) string {
+	return fmt.Sprintf("hami.io/use-%s-uuid", commonWord)
+}
+
+func ascendNoUseUUIDAnnotation(commonWord string) string {
+	return fmt.Sprintf("hami.io/no-use-%s-uuid", commonWord)
+}
+
+func draDevicesFromAscend(c *AscendConfig) ([]*DRADeviceConfig, []int) {
+	if c == nil {
+		c = &AscendConfig{}
+	}
+	vnpus := c.Devices
+	legacySingle := len(vnpus) == 0 && c.ResourceCountName != ""
+	if legacySingle {
+		word := strings.TrimPrefix(c.ResourceCountName, "huawei.com/")
+		if word == c.ResourceCountName || word == "" {
+			word = "Ascend310P"
+		}
+		vnpus = []AscendVNPUConfig{{
+			CommonWord:         word,
+			ResourceName:       c.ResourceCountName,
+			ResourceMemoryName: firstNonEmpty(c.ResourceMemoryName, c.ResourceCountName+"-memory"),
+			ResourceCoreName:   firstNonEmpty(c.ResourceCoreName, c.ResourceCountName+"-core"),
+		}}
+	}
+	if len(vnpus) == 0 {
+		vnpus = DefaultAscendVNPUs()
+	}
+
+	out := make([]*DRADeviceConfig, 0, len(vnpus))
+	var emptyResourceNameIndexes []int
+	for i, vnpu := range vnpus {
+		if vnpu.ResourceName == "" {
+			emptyResourceNameIndexes = append(emptyResourceNameIndexes, i)
+			continue
+		}
+		word := vnpu.CommonWord
+		if word == "" {
+			word = strings.TrimPrefix(vnpu.ResourceName, "huawei.com/")
+		}
+		useUUID := ascendUseUUIDAnnotation(word)
+		noUseUUID := ascendNoUseUUIDAnnotation(word)
+		if legacySingle {
+			useUUID = firstNonEmpty(c.UseUUIDAnnotation, useUUID)
+			noUseUUID = firstNonEmpty(c.NoUseUUIDAnnotation, noUseUUID)
+		}
+		out = append(out, &DRADeviceConfig{
+			ResourceCountName:     vnpu.ResourceName,
+			ResourceMemoryName:    vnpu.ResourceMemoryName,
+			ResourceCoreName:      vnpu.ResourceCoreName,
+			DeviceClassName:       firstNonEmpty(c.DeviceClassName, constants.AscendDeviceClassName),
+			DraDriverName:         firstNonEmpty(c.DraDriverName, constants.AscendDraDriver),
+			RequestName:           firstNonEmpty(c.RequestName, constants.AscendRequestName),
+			DeviceType:            constants.AscendHAMivNPUCoreDeviceType,
+			CommonWord:            word,
+			RuntimeClassName:      c.RuntimeClassName,
+			UseUUIDAnnotation:     useUUID,
+			NoUseUUIDAnnotation:   noUseUUID,
+			UseTypeAnnotation:     firstNonEmpty(c.UseTypeAnnotation, constants.AscendUseTypeAnnotation),
+			NoUseTypeAnnotation:   firstNonEmpty(c.NoUseTypeAnnotation, constants.AscendNoUseTypeAnnotation),
+			ReferenceComputeUnits: 0,
+		})
+	}
+	return out, emptyResourceNameIndexes
+}
+
+func (c *Config) DRADevices(vendor string) ([]*DRADeviceConfig, error) {
 	selected := vendor
 	if selected == "" {
 		selected = c.Vendor
 	}
 	switch selected {
 	case "", VendorNvidia:
-		return draDeviceFromNvidia(&c.Nvidia), nil
+		return []*DRADeviceConfig{draDeviceFromNvidia(&c.Nvidia)}, nil
 	case VendorHygon:
-		return draDeviceFromHygon(&c.Hygon), nil
+		return []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}, nil
+	case VendorAscend:
+		cfgs, emptyIndexes := draDevicesFromAscend(&c.Ascend)
+		if len(cfgs) == 0 {
+			if len(emptyIndexes) > 0 {
+				return nil, fmt.Errorf("no ascend devices configured: empty resourceName at indexes %v", emptyIndexes)
+			}
+			return nil, fmt.Errorf("no ascend devices configured")
+		}
+		return cfgs, nil
 	default:
 		return nil, fmt.Errorf("unsupported device vendor %q", selected)
 	}
+}
+
+func (c *Config) DRADevice(vendor string) (*DRADeviceConfig, error) {
+	cfgs, err := c.DRADevices(vendor)
+	if err != nil {
+		return nil, err
+	}
+	return cfgs[0], nil
 }
 
 func firstNonEmpty(values ...string) string {

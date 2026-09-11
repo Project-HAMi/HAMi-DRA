@@ -36,6 +36,20 @@ const (
 	HygonUseTypeAnnotation   = "hygon.com/use-hcutype"
 	HygonNoUseTypeAnnotation = "hygon.com/nouse-hcutype"
 
+	// Ascend DRA driver (ascend-dra-driver). HAMivNPUCore is the currently
+	// validated allocation mode; traditional full-card / vNPU DeviceClasses
+	// can be added later via firstAvailable without changing these names.
+	AscendDraDriver              = "ascend.project-hami.io"
+	AscendDeviceClassName        = "hami-vnpu-core.project-hami.io"
+	AscendHAMivNPUCoreDeviceType = "HAMivNPUCore"
+	AscendRequestName            = "npu"
+
+	// UUID annotation keys follow HAMi: hami.io/use-<commonWord>-uuid.
+	AscendUseUUIDAnnotation   = "hami.io/use-Ascend310P-uuid"
+	AscendNoUseUUIDAnnotation = "hami.io/no-use-Ascend310P-uuid"
+	AscendUseTypeAnnotation   = "hami.io/use-nputype"
+	AscendNoUseTypeAnnotation = "hami.io/no-use-nputype"
+
 	DraLabel = "hami.io/dra"
 
 	DeviceAttributeUUID         = "uuid"

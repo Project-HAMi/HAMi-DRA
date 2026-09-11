@@ -67,6 +67,8 @@ resourceMem: "nvidia.com/gpumem"
 resourceCores: "nvidia.com/gpucores"
 ```
 
+Hygon HCU and Huawei Ascend use the same webhook with `deviceVendor` set to `hygon` or `ascend`. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
+
 ### Monitor Component
 
 The monitor component is an optional feature that collects and exposes GPU resource metrics via Prometheus. It is enabled by default.

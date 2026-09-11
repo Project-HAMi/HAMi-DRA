@@ -32,7 +32,56 @@ hcuDraDriverName: dra.hygon.com
 # compute units from: kubectl get resourceslice -o yaml
 # Whole-card only (hygon.com/hcunum without hcumem/hcucores) can leave 0.
 hcuReferenceComputeUnits: 0
-deviceVendor: nvidia  # nvidia | hygon
+deviceVendor: nvidia  # nvidia | hygon | ascend
+
+# Ascend NPU parameters (webhook when deviceVendor=ascend).
+# Device list matches HAMi vnpus.configs (commonWord + resource names).
+# Driver is installed separately (ascend-dra-driver); this chart converts
+# HAMi extended resources into HAMivNPUCore ResourceClaims.
+ascendDeviceClassName: hami-vnpu-core.project-hami.io
+ascendDraDriverName: ascend.project-hami.io
+# Injected onto Pods when unset. Leave empty to leave spec.runtimeClassName unchanged.
+ascendRuntimeClassName: ""
+# Fallback when ascendDevices is empty (single chip).
+ascendResourceName: "huawei.com/Ascend310P"
+ascendResourceMem: "huawei.com/Ascend310P-memory"
+ascendResourceCores: "huawei.com/Ascend310P-core"
+ascendDevices:
+  - commonWord: Ascend910A
+    chipName: "910A"
+    resourceName: huawei.com/Ascend910A
+    resourceMemoryName: huawei.com/Ascend910A-memory
+    resourceCoreName: huawei.com/Ascend910A-core
+  - commonWord: Ascend910B2
+    chipName: "910B2"
+    resourceName: huawei.com/Ascend910B2
+    resourceMemoryName: huawei.com/Ascend910B2-memory
+    resourceCoreName: huawei.com/Ascend910B2-core
+  - commonWord: Ascend910B3
+    chipName: "910B3"
+    resourceName: huawei.com/Ascend910B3
+    resourceMemoryName: huawei.com/Ascend910B3-memory
+    resourceCoreName: huawei.com/Ascend910B3-core
+  - commonWord: Ascend910B4-1
+    chipName: "910B4-1"
+    resourceName: huawei.com/Ascend910B4-1
+    resourceMemoryName: huawei.com/Ascend910B4-1-memory
+    resourceCoreName: huawei.com/Ascend910B4-1-core
+  - commonWord: Ascend910B4
+    chipName: "910B4"
+    resourceName: huawei.com/Ascend910B4
+    resourceMemoryName: huawei.com/Ascend910B4-memory
+    resourceCoreName: huawei.com/Ascend910B4-core
+  - commonWord: Ascend310P
+    chipName: "310P3"
+    resourceName: huawei.com/Ascend310P
+    resourceMemoryName: huawei.com/Ascend310P-memory
+    resourceCoreName: huawei.com/Ascend310P-core
+  - commonWord: Ascend910C
+    chipName: "Ascend910"
+    resourceName: huawei.com/Ascend910C
+    resourceMemoryName: huawei.com/Ascend910C-memory
+    resourceCoreName: huawei.com/Ascend910C-core
 
 # Metax sGPU Parameters
 metaxResourceName: "metax-tech.com/sgpu"
@@ -234,5 +283,10 @@ drivers:
     enabled: false
     # Override DeviceClass/driver name in webhook config only.
     # Leave empty to use hcuDeviceClassName / hcuDraDriverName.
+    deviceClassName: ""
+    driverName: ""
+  ascend:
+    # Optional DeviceClass name override used by webhook config helpers.
+    # The HAMivNPUCore DeviceClass is created by ascend-dra-driver, not this chart.
     deviceClassName: ""
     driverName: ""

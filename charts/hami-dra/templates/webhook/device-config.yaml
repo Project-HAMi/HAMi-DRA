@@ -234,6 +234,28 @@ data:
       draDriverName: {{ include "hami.dra.hcu.driverName" . }}
       requestName: hcu
       referenceComputeUnits: {{ .Values.hcuReferenceComputeUnits }}
+    ascend:
+      deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.ascend.driverName" . }}
+      requestName: npu
+      {{- with .Values.ascendRuntimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      devices:
+      {{- if .Values.ascendDevices }}
+      {{- range .Values.ascendDevices }}
+      - commonWord: {{ .commonWord }}
+        chipName: {{ .chipName | quote }}
+        resourceName: {{ .resourceName }}
+        resourceMemoryName: {{ .resourceMemoryName }}
+        resourceCoreName: {{ .resourceCoreName }}
+      {{- end }}
+      {{- else }}
+      - commonWord: Ascend310P
+        resourceName: {{ .Values.ascendResourceName }}
+        resourceMemoryName: {{ .Values.ascendResourceMem }}
+        resourceCoreName: {{ .Values.ascendResourceCores }}
+      {{- end }}
     vendor: {{ include "hami.dra.webhook.deviceVendor" . }}
     metax:
       resourceCountName: "metax-tech.com/gpu"
