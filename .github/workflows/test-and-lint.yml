@@ -149,6 +149,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
+          cluster_name: hami-dra-e2e
           node_image: kindest/node:v1.34.0
 
       - name: Load E2E images
