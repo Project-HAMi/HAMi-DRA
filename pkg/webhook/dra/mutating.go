@@ -88,10 +88,6 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		pod.Labels = make(map[string]string)
 	}
 	pod.Labels[constants.DraLabel] = "true"
-	if runtimeCfg := a.runtimeClassConfig(); runtimeCfg != nil {
-		runtimeCfg.ApplyRuntimeClass(&pod.Spec)
-	}
-
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
 		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList)
@@ -121,15 +117,6 @@ func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 		return []*config.DRADeviceConfig{a.DeviceConfig}
 	}
 	return nil
-}
-
-func (a *MutatingAdmission) runtimeClassConfig() *config.DRADeviceConfig {
-	for _, cfg := range a.configs() {
-		if cfg != nil && cfg.RuntimeClassName != "" {
-			return cfg
-		}
-	}
-	return a.DeviceConfig
 }
 
 func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string) ([]string, error) {
@@ -190,8 +177,8 @@ func resourceClaimName(pod *corev1.Pod, containerName string, cfg *config.DRADev
 	if pod.Name == "" {
 		rcName = fmt.Sprintf("%s-%s-%s", pod.Namespace, rand.String(5), containerName)
 	}
-	if cfg != nil && cfg.CommonWord != "" {
-		rcName = fmt.Sprintf("%s-%s", rcName, strings.ToLower(cfg.CommonWord))
+	if cfg != nil && cfg.ClaimNameSuffix() != "" {
+		rcName = fmt.Sprintf("%s-%s", rcName, cfg.ClaimNameSuffix())
 	}
 	return truncateDNS1123Label(rcName)
 }

@@ -220,32 +220,20 @@ groups:
 {{- end -}}
 {{- end -}}
 
-{{- define "hami.dra.webhook.deviceClassName" -}}
-{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- include "hami.dra.hcu.deviceClassName" . -}}
-{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "ascend" -}}
-{{- include "hami.dra.ascend.deviceClassName" . -}}
-{{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
+{{- define "hami.dra.nvidia.deviceClassName" -}}
+{{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- include "hami.dra.driver.fake.deviceClassName" . -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "hami.dra.webhook.driverName" -}}
-{{- if eq (include "hami.dra.webhook.deviceVendor" .) "hygon" -}}
-{{- include "hami.dra.hcu.driverName" . -}}
-{{- else if eq (include "hami.dra.webhook.deviceVendor" .) "ascend" -}}
-{{- include "hami.dra.ascend.driverName" . -}}
-{{- else if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
+{{- define "hami.dra.nvidia.driverName" -}}
+{{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- include "hami.dra.driver.fake.driverName" . -}}
 {{- else -}}
 {{- "hami-core-gpu.project-hami.io" -}}
 {{- end -}}
-{{- end -}}
-
-{{- define "hami.dra.webhook.deviceVendor" -}}
-{{- .Values.deviceVendor | default "nvidia" -}}
 {{- end -}}
 
 {{/*

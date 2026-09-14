@@ -132,14 +132,6 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 			return rctNames, err
 		}
 	}
-	if len(rctNames) > 0 {
-		for _, cfg := range a.configs() {
-			if cfg != nil && cfg.RuntimeClassName != "" {
-				cfg.ApplyRuntimeClass(&task.Template.Spec)
-				break
-			}
-		}
-	}
 	return rctNames, nil
 }
 
@@ -153,8 +145,8 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		}
 
 		raw := fmt.Sprintf("%s-%s-%s", namespace, name, container.Name)
-		if cfg.CommonWord != "" {
-			raw = fmt.Sprintf("%s-%s", raw, strings.ToLower(cfg.CommonWord))
+		if cfg.ClaimNameSuffix() != "" {
+			raw = fmt.Sprintf("%s-%s", raw, cfg.ClaimNameSuffix())
 		}
 		rctName := truncateDNS1123Label(raw)
 		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, cfg)

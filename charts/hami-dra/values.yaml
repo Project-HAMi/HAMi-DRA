@@ -22,7 +22,7 @@ mluResourceName: "cambricon.com/vmlu"
 mluResourceMem: "cambricon.com/mlu.smlu.vmemory"
 mluResourceCores: "cambricon.com/mlu.smlu.vcore"
 
-# Hygon HCU parameters (webhook when deviceVendor=hygon)
+# Hygon HCU parameters (webhook when deviceVendors contains hygon)
 hcuResourceName: "hygon.com/hcunum"
 hcuResourceMem: "hygon.com/hcumem"
 hcuResourceCores: "hygon.com/hcucores"
@@ -32,16 +32,15 @@ hcuDraDriverName: dra.hygon.com
 # compute units from: kubectl get resourceslice -o yaml
 # Whole-card only (hygon.com/hcunum without hcumem/hcucores) can leave 0.
 hcuReferenceComputeUnits: 0
-deviceVendor: nvidia  # nvidia | hygon | ascend
+deviceVendors:
+  - nvidia  # nvidia | hygon | ascend
 
-# Ascend NPU parameters (webhook when deviceVendor=ascend).
+# Ascend NPU parameters (webhook when deviceVendors contains ascend).
 # Device list matches HAMi vnpus.configs (commonWord + resource names).
 # Driver is installed separately (ascend-dra-driver); this chart converts
 # HAMi extended resources into HAMivNPUCore ResourceClaims.
 ascendDeviceClassName: hami-vnpu-core.project-hami.io
 ascendDraDriverName: ascend.project-hami.io
-# Injected onto Pods when unset. Leave empty to leave spec.runtimeClassName unchanged.
-ascendRuntimeClassName: ""
 # Fallback when ascendDevices is empty (single chip).
 ascendResourceName: "huawei.com/Ascend310P"
 ascendResourceMem: "huawei.com/Ascend310P-memory"

@@ -149,7 +149,7 @@ and `slices=4` (one physical card can be split into at most 4 vHCU;
 
 ```bash
 helm upgrade --install hami-dra ./charts/hami-dra \
-  --set deviceVendor=hygon \
+  --set 'deviceVendors={hygon}' \
   --set drivers.nvidia.enabled=false \
   --set drivers.fake.enabled=true \
   --set drivers.fake.profile=hygon

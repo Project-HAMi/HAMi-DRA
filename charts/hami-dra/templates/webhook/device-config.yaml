@@ -1,3 +1,6 @@
+{{- if hasKey .Values "deviceVendor" -}}
+{{- fail "deviceVendor was removed; use deviceVendors instead" -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,8 +19,8 @@ data:
       resourceMemoryPercentageName: {{ .Values.resourceMemPercentage }}
       resourceCoreName: {{ .Values.resourceCores }}
       resourcePriorityName: {{ .Values.resourcePriority }}
-      deviceClassName: {{ include "hami.dra.webhook.deviceClassName" . }}
-      draDriverName: {{ include "hami.dra.webhook.driverName" . }}
+      deviceClassName: {{ include "hami.dra.nvidia.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.nvidia.driverName" . }}
       overwriteEnv: false
       defaultMemory: 0
       defaultCores: 0
@@ -238,9 +241,6 @@ data:
       deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.ascend.driverName" . }}
       requestName: npu
-      {{- with .Values.ascendRuntimeClassName }}
-      runtimeClassName: {{ . }}
-      {{- end }}
       devices:
       {{- if .Values.ascendDevices }}
       {{- range .Values.ascendDevices }}
@@ -256,7 +256,10 @@ data:
         resourceMemoryName: {{ .Values.ascendResourceMem }}
         resourceCoreName: {{ .Values.ascendResourceCores }}
       {{- end }}
-    vendor: {{ include "hami.dra.webhook.deviceVendor" . }}
+    vendors:
+{{- range .Values.deviceVendors }}
+      - {{ . | quote }}
+{{- end }}
     metax:
       resourceCountName: "metax-tech.com/gpu"
       resourceVCountName: {{ .Values.metaxResourceName }}

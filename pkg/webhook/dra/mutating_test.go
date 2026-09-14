@@ -17,6 +17,7 @@ limitations under the License.
 package dra
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -24,6 +25,10 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -32,8 +37,8 @@ import (
 )
 
 func defaultNvidiaDeviceConfig() *config.DRADeviceConfig {
-	cfg, _ := (&config.Config{}).DRADevice(config.VendorNvidia)
-	return cfg
+	cfgs, _ := (&config.Config{}).DRADevices([]string{config.VendorNvidia})
+	return cfgs[0]
 }
 
 func TestAddAnnotationSelectors(t *testing.T) {
@@ -227,8 +232,9 @@ func TestAddAnnotationSelectors(t *testing.T) {
 }
 
 func TestAddAnnotationSelectorsHygon(t *testing.T) {
-	cfg, err := (&config.Config{}).DRADevice(config.VendorHygon)
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorHygon})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -263,13 +269,14 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 }
 
 func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
-	deviceConfig, err := (&config.Config{
+	deviceConfigs, err := (&config.Config{
 		Nvidia: config.NvidiaConfig{
 			DeviceClassName: "fake-gpu.project-hami.io",
 			DraDriverName:   "fake.dra.hami.io",
 		},
-	}).DRADevice(config.VendorNvidia)
+	}).DRADevices([]string{config.VendorNvidia})
 	require.NoError(t, err)
+	deviceConfig := deviceConfigs[0]
 
 	admission := &MutatingAdmission{
 		DeviceConfig: deviceConfig,
@@ -287,7 +294,7 @@ func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 }
 
 func TestAddAnnotationSelectorsAscend(t *testing.T) {
-	cfgs, err := (&config.Config{}).DRADevices(config.VendorAscend)
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAscend})
 	assert.NoError(t, err)
 	var cfg *config.DRADeviceConfig
 	for _, c := range cfgs {
@@ -335,4 +342,53 @@ func TestResourceClaimNameDNS1123Label(t *testing.T) {
 	assert.NotContains(t, name, "--")
 	short := resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", nil)
 	assert.Equal(t, "ns-pod-ctr", short)
+
+	nvidia := defaultNvidiaDeviceConfig()
+	hygonConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorHygon})
+	require.NoError(t, err)
+	assert.Equal(t, "ns-pod-ctr-nvidia", resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", nvidia))
+	assert.Equal(t, "ns-pod-ctr-hygon", resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", hygonConfigs[0]))
+}
+
+func TestHandleContainerMultipleVendors(t *testing.T) {
+	deviceConfigs, err := (&config.Config{Ascend: config.AscendConfig{
+		Devices: []config.AscendVNPUConfig{{
+			CommonWord:         "Ascend310P",
+			ResourceName:       "huawei.com/Ascend310P",
+			ResourceMemoryName: "huawei.com/Ascend310P-memory",
+			ResourceCoreName:   "huawei.com/Ascend310P-core",
+		}},
+	}}).DRADevices([]string{config.VendorNvidia, config.VendorHygon, config.VendorAscend})
+	require.NoError(t, err)
+
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client:        fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfigs: deviceConfigs,
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "mixed", Namespace: "default"}}
+	container := &corev1.Container{
+		Name: "workload",
+		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			corev1.ResourceName("nvidia.com/gpu"):        resource.MustParse("1"),
+			corev1.ResourceName("hygon.com/hcunum"):      resource.MustParse("1"),
+			corev1.ResourceName("huawei.com/Ascend310P"): resource.MustParse("1"),
+		}},
+	}
+
+	names, err := admission.handleContainer(context.Background(), container, pod, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{
+		"default-mixed-workload-nvidia",
+		"default-mixed-workload-hygon",
+		"default-mixed-workload-ascend310p",
+	}, names)
+	assert.Empty(t, container.Resources.Limits)
+
+	for i, name := range names {
+		claim := &resourceapi.ResourceClaim{}
+		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
+		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
+	}
 }

@@ -13,7 +13,8 @@
 # (910A/B2/B3/B4/B4-1/310P/910C). Traditional vNPU / full-card DeviceClasses
 # stay with the driver.
 
-deviceVendor: ascend
+deviceVendors:
+  - ascend
 
 drivers:
   nvidia:

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -35,6 +34,7 @@ const (
 
 // DRADeviceConfig holds runtime settings for converting device-plugin resources to DRA claims.
 type DRADeviceConfig struct {
+	Vendor             string
 	ResourceCountName  string
 	ResourceMemoryName string
 	ResourceCoreName   string
@@ -49,9 +49,6 @@ type DRADeviceConfig struct {
 	NoUseUUIDAnnotation string
 	UseTypeAnnotation   string
 	NoUseTypeAnnotation string
-
-	// RuntimeClassName is injected onto Pods/Job templates when unset.
-	RuntimeClassName string
 
 	// ReferenceComputeUnits converts hygon.com/hcucores percentage to absolute cores when > 0.
 	ReferenceComputeUnits int64
@@ -69,6 +66,13 @@ func (c *DRADeviceConfig) EffectiveDraDriverName() string {
 		return c.DraDriverName
 	}
 	return constants.NvidiaDraDriver
+}
+
+func (c *DRADeviceConfig) ClaimNameSuffix() string {
+	if c.CommonWord != "" {
+		return strings.ToLower(c.CommonWord)
+	}
+	return c.Vendor
 }
 
 func (c *DRADeviceConfig) TypeSelectorExpression() string {
@@ -113,15 +117,6 @@ func (c *DRADeviceConfig) NewPrimaryDeviceRequest() resourceapi.DeviceRequest {
 	}
 }
 
-// ApplyRuntimeClass sets spec.runtimeClassName when configured and the pod left it empty.
-func (c *DRADeviceConfig) ApplyRuntimeClass(podSpec *corev1.PodSpec) {
-	if c == nil || c.RuntimeClassName == "" || podSpec == nil || podSpec.RuntimeClassName != nil {
-		return
-	}
-	name := c.RuntimeClassName
-	podSpec.RuntimeClassName = &name
-}
-
 func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quantity {
 	// HAMi device-plugin memory resources are expressed in MiB.
 	return resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
@@ -147,9 +142,10 @@ func draDeviceFromNvidia(c *NvidiaConfig) *DRADeviceConfig {
 		c = &NvidiaConfig{}
 	}
 	return &DRADeviceConfig{
-		ResourceCountName:     c.ResourceCountName,
-		ResourceMemoryName:    c.ResourceMemoryName,
-		ResourceCoreName:      c.ResourceCoreName,
+		Vendor:                VendorNvidia,
+		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "nvidia.com/gpu"),
+		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "nvidia.com/gpumem"),
+		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "nvidia.com/gpucores"),
 		DeviceClassName:       c.DeviceClassName,
 		DraDriverName:         c.DraDriverName,
 		RequestName:           "gpu",
@@ -167,6 +163,7 @@ func draDeviceFromHygon(c *HygonConfig) *DRADeviceConfig {
 		c = &HygonConfig{}
 	}
 	cfg := &DRADeviceConfig{
+		Vendor:                VendorHygon,
 		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "hygon.com/hcunum"),
 		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "hygon.com/hcumem"),
 		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "hygon.com/hcucores"),
@@ -264,6 +261,7 @@ func draDevicesFromAscend(c *AscendConfig) ([]*DRADeviceConfig, []int) {
 			noUseUUID = firstNonEmpty(c.NoUseUUIDAnnotation, noUseUUID)
 		}
 		out = append(out, &DRADeviceConfig{
+			Vendor:                VendorAscend,
 			ResourceCountName:     vnpu.ResourceName,
 			ResourceMemoryName:    vnpu.ResourceMemoryName,
 			ResourceCoreName:      vnpu.ResourceCoreName,
@@ -272,7 +270,6 @@ func draDevicesFromAscend(c *AscendConfig) ([]*DRADeviceConfig, []int) {
 			RequestName:           firstNonEmpty(c.RequestName, constants.AscendRequestName),
 			DeviceType:            constants.AscendHAMivNPUCoreDeviceType,
 			CommonWord:            word,
-			RuntimeClassName:      c.RuntimeClassName,
 			UseUUIDAnnotation:     useUUID,
 			NoUseUUIDAnnotation:   noUseUUID,
 			UseTypeAnnotation:     firstNonEmpty(c.UseTypeAnnotation, constants.AscendUseTypeAnnotation),
@@ -283,36 +280,69 @@ func draDevicesFromAscend(c *AscendConfig) ([]*DRADeviceConfig, []int) {
 	return out, emptyResourceNameIndexes
 }
 
-func (c *Config) DRADevices(vendor string) ([]*DRADeviceConfig, error) {
-	selected := vendor
-	if selected == "" {
-		selected = c.Vendor
+func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
+	if c.LegacyVendor != "" {
+		return nil, fmt.Errorf("config field vendor was removed; use vendors instead")
 	}
-	switch selected {
-	case "", VendorNvidia:
-		return []*DRADeviceConfig{draDeviceFromNvidia(&c.Nvidia)}, nil
-	case VendorHygon:
-		return []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}, nil
-	case VendorAscend:
-		cfgs, emptyIndexes := draDevicesFromAscend(&c.Ascend)
-		if len(cfgs) == 0 {
-			if len(emptyIndexes) > 0 {
-				return nil, fmt.Errorf("no ascend devices configured: empty resourceName at indexes %v", emptyIndexes)
-			}
-			return nil, fmt.Errorf("no ascend devices configured")
-		}
-		return cfgs, nil
-	default:
-		return nil, fmt.Errorf("unsupported device vendor %q", selected)
+	selected := vendors
+	if len(selected) == 0 {
+		selected = c.Vendors
 	}
-}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("at least one device vendor must be configured")
+	}
 
-func (c *Config) DRADevice(vendor string) (*DRADeviceConfig, error) {
-	cfgs, err := c.DRADevices(vendor)
-	if err != nil {
-		return nil, err
+	seenVendors := make(map[string]struct{}, len(selected))
+	seenResources := make(map[string]string)
+	seenSuffixes := make(map[string]string)
+	var result []*DRADeviceConfig
+	for _, vendor := range selected {
+		if _, ok := seenVendors[vendor]; ok {
+			return nil, fmt.Errorf("duplicate device vendor %q", vendor)
+		}
+		seenVendors[vendor] = struct{}{}
+
+		var configs []*DRADeviceConfig
+		switch vendor {
+		case VendorNvidia:
+			configs = []*DRADeviceConfig{draDeviceFromNvidia(&c.Nvidia)}
+		case VendorHygon:
+			configs = []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}
+		case VendorAscend:
+			var emptyIndexes []int
+			configs, emptyIndexes = draDevicesFromAscend(&c.Ascend)
+			if len(configs) == 0 {
+				if len(emptyIndexes) > 0 {
+					return nil, fmt.Errorf("no ascend devices configured: empty resourceName at indexes %v", emptyIndexes)
+				}
+				return nil, fmt.Errorf("no ascend devices configured")
+			}
+		default:
+			return nil, fmt.Errorf("unsupported device vendor %q", vendor)
+		}
+
+		for _, cfg := range configs {
+			if cfg.ResourceCountName == "" {
+				return nil, fmt.Errorf("device vendor %q has an empty count resource name", vendor)
+			}
+			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName} {
+				if resourceName == "" {
+					continue
+				}
+				if previous, ok := seenResources[resourceName]; ok {
+					return nil, fmt.Errorf("resource name %q is configured by both %q and %q", resourceName, previous, vendor)
+				}
+				seenResources[resourceName] = vendor
+			}
+			suffix := cfg.ClaimNameSuffix()
+			if previous, ok := seenSuffixes[suffix]; ok {
+				return nil, fmt.Errorf("claim name suffix %q is configured by both %q and %q", suffix, previous, vendor)
+			}
+			seenSuffixes[suffix] = vendor
+			result = append(result, cfg)
+		}
 	}
-	return cfgs[0], nil
+	return result, nil
 }
 
 func firstNonEmpty(values ...string) string {
