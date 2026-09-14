@@ -18,7 +18,7 @@ From a local checkout:
 ```bash
 helm install hami-dra ./charts/hami-dra \
   -n hami-system --create-namespace \
-  --set deviceVendor=hygon \
+  --set 'deviceVendors={hygon}' \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=false
 ```
@@ -28,7 +28,7 @@ From the published chart:
 ```bash
 helm install hami-dra hami-dra/hami-dra \
   -n hami-system --create-namespace \
-  --set deviceVendor=hygon \
+  --set 'deviceVendors={hygon}' \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=false
 ```
@@ -37,7 +37,7 @@ Upgrade with the same flags:
 
 ```bash
 helm upgrade hami-dra ./charts/hami-dra -n hami-system \
-  --set deviceVendor=hygon \
+  --set 'deviceVendors={hygon}' \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=false
 ```
@@ -46,7 +46,7 @@ helm upgrade hami-dra ./charts/hami-dra -n hami-system \
 
 | Value | Recommended | Notes |
 |-------|-------------|-------|
-| `deviceVendor` | `hygon` | Switches webhook to Hygon HCU resource names and `dra.hygon.com` driver. |
+| `deviceVendors` | `[hygon]` | Enables conversion of Hygon HCU resources. Add `nvidia` or `ascend` for mixed clusters. |
 | `drivers.nvidia.enabled` | `false` | Do not deploy the NVIDIA DRA driver DaemonSet. |
 | `drivers.hcu.deviceClassName` / `driverName` | empty (default) | Optional overrides for webhook config; falls back to `hcuDeviceClassName` / `hcuDraDriverName`. Does not deploy a driver. |
 | `monitor.enabled` | `false` | Monitor is NVIDIA-oriented today; disable for HCU-only clusters. |
@@ -74,7 +74,7 @@ Example:
 
 ```bash
 helm upgrade hami-dra ./charts/hami-dra -n hami-system \
-  --set deviceVendor=hygon \
+  --set 'deviceVendors={hygon}' \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=false \
   --set hcuReferenceComputeUnits=128

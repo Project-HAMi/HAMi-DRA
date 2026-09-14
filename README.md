@@ -67,7 +67,17 @@ resourceMem: "nvidia.com/gpumem"
 resourceCores: "nvidia.com/gpucores"
 ```
 
-Hygon HCU and Huawei Ascend use the same webhook with `deviceVendor` set to `hygon` or `ascend`. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
+The webhook can convert multiple device vendors in one deployment. Configure `deviceVendors`, for example:
+
+```yaml
+deviceVendors:
+  - nvidia
+  - hygon
+  - ascend
+```
+
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
+The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend`.
 
 ### Monitor Component
 

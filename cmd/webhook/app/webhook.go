@@ -130,7 +130,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 		klog.Errorf("Failed to unmarshal device config: %v", err)
 		return err
 	}
-	deviceConfigs, err := deviceConfigFile.DRADevices(opts.DeviceVendor)
+	deviceConfigs, err := deviceConfigFile.DRADevices(opts.DeviceVendors)
 	if err != nil {
 		klog.Errorf("Failed to resolve DRA device config: %v", err)
 		return err

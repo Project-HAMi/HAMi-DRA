@@ -90,10 +90,12 @@ const (
 )
 
 type Config struct {
-	Vendor string       `yaml:"vendor"`
-	Nvidia NvidiaConfig `yaml:"nvidia"`
-	Hygon  HygonConfig  `yaml:"hygon"`
-	Ascend AscendConfig `yaml:"ascend"`
+	Vendors []string `yaml:"vendors"`
+	// LegacyVendor is retained only so removed configurations fail with a useful error.
+	LegacyVendor string       `yaml:"vendor"`
+	Nvidia       NvidiaConfig `yaml:"nvidia"`
+	Hygon        HygonConfig  `yaml:"hygon"`
+	Ascend       AscendConfig `yaml:"ascend"`
 }
 
 // HygonConfig holds HCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).
@@ -118,10 +120,9 @@ type HygonConfig struct {
 // Devices lists HAMi vNPU chips (commonWord + resource names). Empty Devices uses
 // DefaultAscendVNPUs. Legacy ResourceCountName/Mem/Core still work as a single chip.
 type AscendConfig struct {
-	DeviceClassName  string `yaml:"deviceClassName"`
-	DraDriverName    string `yaml:"draDriverName"`
-	RequestName      string `yaml:"requestName"`
-	RuntimeClassName string `yaml:"runtimeClassName"`
+	DeviceClassName string `yaml:"deviceClassName"`
+	DraDriverName   string `yaml:"draDriverName"`
+	RequestName     string `yaml:"requestName"`
 
 	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
 	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
@@ -164,8 +165,6 @@ type NvidiaConfig struct {
 	MigGeometriesList []AllowedMigGeometries `yaml:"knownMigGeometries"`
 	// GPUCorePolicy through webhook automatic injected to container env
 	GPUCorePolicy GPUCoreUtilizationPolicy `yaml:"gpuCorePolicy"`
-	// RuntimeClassName is the name of the runtime class to be added to pod.spec.runtimeClassName
-	RuntimeClassName string `yaml:"runtimeClassName"`
 }
 
 // NodeDefaultConfig defines settings that can be specified per node via Nodeconfig.

@@ -1,0 +1,35 @@
+# Copyright 2026 The HAMi Authors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hami-dra-workloads
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-vendor
+  namespace: hami-dra-workloads
+spec:
+  restartPolicy: Never
+  containers:
+    - name: workload
+      image: registry.k8s.io/pause:3.10
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+          hygon.com/hcunum: "1"
+          huawei.com/Ascend310P: "1"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-device
+  namespace: hami-dra-workloads
+spec:
+  restartPolicy: Never
+  containers:
+    - name: workload
+      image: registry.k8s.io/pause:3.10

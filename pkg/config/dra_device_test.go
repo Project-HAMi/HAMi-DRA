@@ -17,10 +17,8 @@ limitations under the License.
 package config
 
 import (
-	"testing"
-
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"testing"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	"github.com/stretchr/testify/assert"
@@ -28,18 +26,20 @@ import (
 )
 
 func TestDRADeviceHygonDefaults(t *testing.T) {
-	cfg, err := (&Config{}).DRADevice(VendorHygon)
+	cfgs, err := (&Config{}).DRADevices([]string{VendorHygon})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 	assert.Equal(t, "hygon.com/hcunum", cfg.ResourceCountName)
 	assert.Equal(t, "dra.hygon.com", cfg.EffectiveDeviceClassName())
 	assert.Equal(t, "hcu", cfg.RequestName)
 }
 
 func TestConvertCoresWithReferenceComputeUnits(t *testing.T) {
-	cfg, err := (&Config{
+	cfgs, err := (&Config{
 		Hygon: HygonConfig{ReferenceComputeUnits: 120},
-	}).DRADevice(VendorHygon)
+	}).DRADevices([]string{VendorHygon})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 
 	converted, err := cfg.ConvertCores(*resource.NewQuantity(60, resource.DecimalSI))
 	assert.NoError(t, err)
@@ -51,23 +51,25 @@ func TestConvertCoresWithReferenceComputeUnits(t *testing.T) {
 }
 
 func TestConvertCoresHygonRequiresReferenceComputeUnits(t *testing.T) {
-	cfg, err := (&Config{}).DRADevice(VendorHygon)
+	cfgs, err := (&Config{}).DRADevices([]string{VendorHygon})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 
 	_, err = cfg.ConvertCores(*resource.NewQuantity(50, resource.DecimalSI))
 	assert.Error(t, err)
 }
 
 func TestConvertMemoryMiB(t *testing.T) {
-	cfg, err := (&Config{}).DRADevice(VendorHygon)
+	cfgs, err := (&Config{}).DRADevices([]string{VendorHygon})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 
 	converted := cfg.ConvertMemory(*resource.NewQuantity(2000, resource.DecimalSI))
 	assert.Equal(t, int64(2000*1024*1024), converted.Value())
 }
 
 func TestDRADeviceAscendDefaults(t *testing.T) {
-	cfgs, err := (&Config{}).DRADevices(VendorAscend)
+	cfgs, err := (&Config{}).DRADevices([]string{VendorAscend})
 	assert.NoError(t, err)
 	assert.Len(t, cfgs, 7)
 
@@ -93,7 +95,6 @@ func TestDRADeviceAscendDefaults(t *testing.T) {
 	assert.Equal(t, constants.AscendDraDriver, cfg310P.EffectiveDraDriverName())
 	assert.Equal(t, constants.AscendRequestName, cfg310P.RequestName)
 	assert.Equal(t, constants.AscendHAMivNPUCoreDeviceType, cfg310P.DeviceType)
-	assert.Empty(t, cfg310P.RuntimeClassName)
 	assert.Equal(t,
 		`device.driver == "ascend.project-hami.io" && device.attributes["ascend.project-hami.io"].type == "HAMivNPUCore"`,
 		cfg310P.TypeSelectorExpression(),
@@ -107,34 +108,16 @@ func TestDRADeviceAscendDefaults(t *testing.T) {
 }
 
 func TestDRADeviceAscendLegacySingleChip(t *testing.T) {
-	cfg, err := (&Config{Ascend: AscendConfig{
+	cfgs, err := (&Config{Ascend: AscendConfig{
 		ResourceCountName:  "huawei.com/Ascend910B3",
 		ResourceMemoryName: "huawei.com/Ascend910B3-memory",
 		ResourceCoreName:   "huawei.com/Ascend910B3-core",
-	}}).DRADevice(VendorAscend)
+	}}).DRADevices([]string{VendorAscend})
 	assert.NoError(t, err)
+	cfg := cfgs[0]
 	assert.Equal(t, "Ascend910B3", cfg.CommonWord)
 	assert.Equal(t, "huawei.com/Ascend910B3", cfg.ResourceCountName)
 	assert.Equal(t, "hami.io/use-Ascend910B3-uuid", cfg.UseUUIDAnnotation)
-}
-
-func TestApplyRuntimeClass(t *testing.T) {
-	cfg, err := (&Config{}).DRADevice(VendorAscend)
-	require.NoError(t, err)
-
-	spec := &corev1.PodSpec{}
-	cfg.ApplyRuntimeClass(spec)
-	assert.Nil(t, spec.RuntimeClassName)
-
-	cfg.RuntimeClassName = "ascend"
-	cfg.ApplyRuntimeClass(spec)
-	require.NotNil(t, spec.RuntimeClassName)
-	assert.Equal(t, "ascend", *spec.RuntimeClassName)
-
-	existing := "custom"
-	spec.RuntimeClassName = &existing
-	cfg.ApplyRuntimeClass(spec)
-	assert.Equal(t, "custom", *spec.RuntimeClassName)
 }
 
 func TestDRADeviceAscendEmptyResourceNameIndexes(t *testing.T) {
@@ -143,7 +126,45 @@ func TestDRADeviceAscendEmptyResourceNameIndexes(t *testing.T) {
 			{CommonWord: "bad-key"},
 			{CommonWord: "also-bad"},
 		},
-	}}).DRADevices(VendorAscend)
+	}}).DRADevices([]string{VendorAscend})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty resourceName at indexes [0 1]")
+}
+
+func TestDRADevicesMultipleVendors(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorNvidia, VendorHygon, VendorAscend})
+	require.NoError(t, err)
+	require.Len(t, cfgs, 9)
+	assert.Equal(t, VendorNvidia, cfgs[0].Vendor)
+	assert.Equal(t, VendorHygon, cfgs[1].Vendor)
+	assert.Equal(t, VendorAscend, cfgs[2].Vendor)
+	assert.Equal(t, "nvidia", cfgs[0].ClaimNameSuffix())
+	assert.Equal(t, "hygon", cfgs[1].ClaimNameSuffix())
+	assert.Equal(t, "ascend910a", cfgs[2].ClaimNameSuffix())
+}
+
+func TestDRADevicesValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		vendors []string
+		message string
+	}{
+		{name: "empty", message: "at least one device vendor"},
+		{name: "legacy", config: Config{LegacyVendor: VendorHygon}, vendors: []string{VendorNvidia}, message: "vendor was removed"},
+		{name: "duplicate", vendors: []string{VendorNvidia, VendorNvidia}, message: "duplicate device vendor"},
+		{name: "unknown", vendors: []string{"unknown"}, message: "unsupported device vendor"},
+		{
+			name:    "resource collision",
+			config:  Config{Hygon: HygonConfig{ResourceCountName: "nvidia.com/gpu"}},
+			vendors: []string{VendorNvidia, VendorHygon},
+			message: "configured by both",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.config.DRADevices(tt.vendors)
+			require.ErrorContains(t, err, tt.message)
+		})
+	}
 }
