@@ -20,33 +20,33 @@ import "github.com/prometheus/client_golang/prometheus"
 
 var (
 	nodevGPUMemoryLimitDesc = prometheus.NewDesc(
-		"GPUDeviceMemoryLimit",
+		"hami_dra_gpu_memory_limit_bytes",
 		"Device memory limit for a certain GPU",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
 	)
 	nodevGPUCoreLimitDesc = prometheus.NewDesc(
-		"GPUDeviceCoreLimit",
+		"hami_dra_gpu_core_limit_ratio",
 		"Device core limit for a certain GPU",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
 	)
 	nodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
-		"GPUDeviceMemoryAllocated",
+		"hami_dra_gpu_memory_allocated_bytes",
 		"Device memory allocated for a certain GPU",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
 	)
 	nodevGPUCoreAllocatedDesc = prometheus.NewDesc(
-		"GPUDeviceCoreAllocated",
+		"hami_dra_gpu_core_allocated_ratio",
 		"Device core allocated for a certain GPU",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
 	)
 	podvGPUMemoryAllocatedDesc = prometheus.NewDesc(
-		"vGPUDeviceMemoryAllocated",
+		"hami_dra_vgpu_memory_allocated_bytes",
 		"vGPU Device memory allocated for a container",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
+		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
 	)
 	podvGPUCoreAllocatedDesc = prometheus.NewDesc(
-		"vGPUDeviceCoreAllocated",
+		"hami_dra_vgpu_core_allocated_ratio",
 		"vGPU Device core allocated for a container",
-		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
+		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
 	)
 )

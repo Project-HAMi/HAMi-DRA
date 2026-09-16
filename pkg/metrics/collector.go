@@ -24,6 +24,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// coreScale converts the 0-100 core accounting into the 0-1 fraction
+// that a Prometheus _ratio suffix promises.
+const coreScale = 100
+
 type Collector struct {
 	cache *cache.Cache
 }
@@ -63,40 +67,40 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 		for idx, device := range devices {
 			deviceIdx := strconv.Itoa(idx)
 
-			// GPUDeviceMemoryLimit
+			// hami_dra_gpu_memory_limit_bytes
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUMemoryLimitDesc,
 				prometheus.GaugeValue,
-				float64(device.MemoryTotal)/1024/1024, // convert to MB
+				float64(device.MemoryTotal),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, device.ProductName,
 			)
 
-			// GPUDeviceCoreLimit
+			// hami_dra_gpu_core_limit_ratio
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUCoreLimitDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresTotal),
+				float64(device.CoresTotal)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, device.ProductName,
 			)
 
-			// GPUDeviceMemoryAllocated
+			// hami_dra_gpu_memory_allocated_bytes
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUMemoryAllocatedDesc,
 				prometheus.GaugeValue,
-				float64(device.MemoryUsed)/1024/1024, // convert to MB
+				float64(device.MemoryUsed),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, device.ProductName,
 			)
 
-			// GPUDeviceCoreAllocated
+			// hami_dra_gpu_core_allocated_ratio
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresUsed),
+				float64(device.CoresUsed)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, device.ProductName,
 			)
 		}
 	}
@@ -127,26 +131,18 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUCoreAllocatedDesc,
 					prometheus.GaugeValue,
-					float64(result.Cores),
+					float64(result.Cores)/coreScale,
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
 					result.Namespace,
 					podName,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUMemoryAllocatedDesc,
 					prometheus.GaugeValue,
-					float64(result.Memory)/1024/1024,
+					float64(result.Memory),
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
 					result.Namespace,
 					podName,
 				)
