@@ -50,3 +50,39 @@ var (
 		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
 	)
 )
+
+// Legacy descriptors reproduce the pre-rename metrics exactly: old names,
+// memory in MB and cores on a 0-100 scale. They are emitted only when
+// --legacy-metrics is set.
+var (
+	legacyNodevGPUMemoryLimitDesc = prometheus.NewDesc(
+		"GPUDeviceMemoryLimit",
+		"Device memory limit for a certain GPU",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+	)
+	legacyNodevGPUCoreLimitDesc = prometheus.NewDesc(
+		"GPUDeviceCoreLimit",
+		"Device core limit for a certain GPU",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+	)
+	legacyNodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
+		"GPUDeviceMemoryAllocated",
+		"Device memory allocated for a certain GPU",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+	)
+	legacyNodevGPUCoreAllocatedDesc = prometheus.NewDesc(
+		"GPUDeviceCoreAllocated",
+		"Device core allocated for a certain GPU",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
+	)
+	legacyPodvGPUMemoryAllocatedDesc = prometheus.NewDesc(
+		"vGPUDeviceMemoryAllocated",
+		"vGPU Device memory allocated for a container",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
+	)
+	legacyPodvGPUCoreAllocatedDesc = prometheus.NewDesc(
+		"vGPUDeviceCoreAllocated",
+		"vGPU Device core allocated for a container",
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
+	)
+)

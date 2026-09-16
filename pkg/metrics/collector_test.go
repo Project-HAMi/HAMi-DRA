@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func newTestCollector(withDevice bool) *Collector {
+func newTestCollector(withDevice, legacy bool) *Collector {
 	c := cache.NewCacheWithClient(fake.NewSimpleClientset())
 	if withDevice {
 		c.NodeDevices.Nodes["node1"] = &cache.NodeDeviceInfo{
@@ -50,7 +50,7 @@ func newTestCollector(withDevice bool) *Collector {
 			{Namespace: "default", DeviceName: "gpu0", Cores: 50, Memory: 8388608},
 		},
 	}
-	return NewCollector(c)
+	return NewCollector(c, legacy)
 }
 
 func TestCollect_NodeMetrics(t *testing.T) {
@@ -74,7 +74,7 @@ hami_dra_gpu_core_allocated_ratio{device_index="0",device_name="gpu0",device_typ
 		"hami_dra_gpu_memory_allocated_bytes",
 		"hami_dra_gpu_core_allocated_ratio",
 	}
-	if err := testutil.CollectAndCompare(newTestCollector(true), strings.NewReader(want), names...); err != nil {
+	if err := testutil.CollectAndCompare(newTestCollector(true, false), strings.NewReader(want), names...); err != nil {
 		t.Errorf("node metrics mismatch: %v", err)
 	}
 }
@@ -92,14 +92,69 @@ hami_dra_vgpu_core_allocated_ratio{device_uuid="uuid-1",namespace="default",node
 		"hami_dra_vgpu_memory_allocated_bytes",
 		"hami_dra_vgpu_core_allocated_ratio",
 	}
-	if err := testutil.CollectAndCompare(newTestCollector(true), strings.NewReader(want), names...); err != nil {
+	if err := testutil.CollectAndCompare(newTestCollector(true, false), strings.NewReader(want), names...); err != nil {
 		t.Errorf("pod metrics mismatch: %v", err)
 	}
 }
 
 func TestCollect_MissingDevice(t *testing.T) {
 	// device not in cache, pod metrics are skipped
-	if got := testutil.CollectAndCount(newTestCollector(false)); got != 0 {
+	if got := testutil.CollectAndCount(newTestCollector(false, false)); got != 0 {
 		t.Errorf("expected 0 metrics, got %d", got)
+	}
+}
+
+func TestCollect_LegacyDisabled(t *testing.T) {
+	col := newTestCollector(true, false)
+	for _, name := range []string{
+		"GPUDeviceMemoryLimit",
+		"GPUDeviceCoreLimit",
+		"GPUDeviceMemoryAllocated",
+		"GPUDeviceCoreAllocated",
+		"vGPUDeviceMemoryAllocated",
+		"vGPUDeviceCoreAllocated",
+	} {
+		if got := testutil.CollectAndCount(col, name); got != 0 {
+			t.Errorf("legacy metric %s emitted while the flag is off, got %d", name, got)
+		}
+	}
+}
+
+func TestCollect_LegacyEnabled(t *testing.T) {
+	want := `
+# HELP GPUDeviceMemoryLimit Device memory limit for a certain GPU
+# TYPE GPUDeviceMemoryLimit gauge
+GPUDeviceMemoryLimit{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 16
+# HELP GPUDeviceCoreLimit Device core limit for a certain GPU
+# TYPE GPUDeviceCoreLimit gauge
+GPUDeviceCoreLimit{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 100
+# HELP GPUDeviceMemoryAllocated Device memory allocated for a certain GPU
+# TYPE GPUDeviceMemoryAllocated gauge
+GPUDeviceMemoryAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 8
+# HELP GPUDeviceCoreAllocated Device core allocated for a certain GPU
+# TYPE GPUDeviceCoreAllocated gauge
+GPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 50
+# HELP vGPUDeviceMemoryAllocated vGPU Device memory allocated for a container
+# TYPE vGPUDeviceMemoryAllocated gauge
+vGPUDeviceMemoryAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 8
+# HELP vGPUDeviceCoreAllocated vGPU Device core allocated for a container
+# TYPE vGPUDeviceCoreAllocated gauge
+vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 50
+`
+	names := []string{
+		"GPUDeviceMemoryLimit",
+		"GPUDeviceCoreLimit",
+		"GPUDeviceMemoryAllocated",
+		"GPUDeviceCoreAllocated",
+		"vGPUDeviceMemoryAllocated",
+		"vGPUDeviceCoreAllocated",
+	}
+	col := newTestCollector(true, true)
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), names...); err != nil {
+		t.Errorf("legacy metrics mismatch: %v", err)
+	}
+	// additive, not a toggle: the new metrics are still emitted
+	if got := testutil.CollectAndCount(col, "hami_dra_gpu_memory_limit_bytes"); got != 1 {
+		t.Errorf("expected the new metric alongside the legacy ones, got %d", got)
 	}
 }
