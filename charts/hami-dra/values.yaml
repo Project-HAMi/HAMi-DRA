@@ -201,6 +201,9 @@ monitor:
       ## Metrics port (NodePort). If not specified, Kubernetes will assign a random port
       metrics: ""
 
+## Export the legacy metric names in addition to the current ones.
+legacyMetrics: true
+
 # Certificate configuration
 certs:
   # Custom certificate (used when certManager.enabled is false)
