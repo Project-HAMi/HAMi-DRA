@@ -20,31 +20,67 @@ import "github.com/prometheus/client_golang/prometheus"
 
 var (
 	nodevGPUMemoryLimitDesc = prometheus.NewDesc(
+		"hami_dra_gpu_memory_limit_bytes",
+		"Device memory limit for a certain GPU",
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+	)
+	nodevGPUCoreLimitDesc = prometheus.NewDesc(
+		"hami_dra_gpu_core_limit_ratio",
+		"Device core limit for a certain GPU",
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+	)
+	nodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
+		"hami_dra_gpu_memory_allocated_bytes",
+		"Device memory allocated for a certain GPU",
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+	)
+	nodevGPUCoreAllocatedDesc = prometheus.NewDesc(
+		"hami_dra_gpu_core_allocated_ratio",
+		"Device core allocated for a certain GPU",
+		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+	)
+	podvGPUMemoryAllocatedDesc = prometheus.NewDesc(
+		"hami_dra_vgpu_memory_allocated_bytes",
+		"vGPU Device memory allocated for a container",
+		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
+	)
+	podvGPUCoreAllocatedDesc = prometheus.NewDesc(
+		"hami_dra_vgpu_core_allocated_ratio",
+		"vGPU Device core allocated for a container",
+		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
+	)
+)
+
+// Legacy descriptors reproduce the pre-rename metrics exactly: old names,
+// memory in MB and cores on a 0-100 scale. They are emitted only when
+// --legacy-metrics is set.
+var (
+	legacyNodevGPUMemoryLimitDesc = prometheus.NewDesc(
 		"GPUDeviceMemoryLimit",
 		"Device memory limit for a certain GPU",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
-	nodevGPUCoreLimitDesc = prometheus.NewDesc(
+	legacyNodevGPUCoreLimitDesc = prometheus.NewDesc(
 		"GPUDeviceCoreLimit",
 		"Device core limit for a certain GPU",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
-	nodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
+	legacyNodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
 		"GPUDeviceMemoryAllocated",
 		"Device memory allocated for a certain GPU",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
-	nodevGPUCoreAllocatedDesc = prometheus.NewDesc(
+	legacyNodevGPUCoreAllocatedDesc = prometheus.NewDesc(
 		"GPUDeviceCoreAllocated",
 		"Device core allocated for a certain GPU",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
-	podvGPUMemoryAllocatedDesc = prometheus.NewDesc(
+	legacyPodvGPUMemoryAllocatedDesc = prometheus.NewDesc(
 		"vGPUDeviceMemoryAllocated",
 		"vGPU Device memory allocated for a container",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
 	)
-	podvGPUCoreAllocatedDesc = prometheus.NewDesc(
+	legacyPodvGPUCoreAllocatedDesc = prometheus.NewDesc(
 		"vGPUDeviceCoreAllocated",
 		"vGPU Device core allocated for a container",
 		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,

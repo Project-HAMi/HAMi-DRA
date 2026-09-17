@@ -37,6 +37,7 @@ spec:
             - --kube-api-qps={{ .Values.monitor.kubeAPIQPS | default 40.0 }}
             - --kube-api-burst={{ .Values.monitor.kubeAPIBurst | default 60 }}
             - --collect-interval={{ .Values.monitor.collectInterval | default "30s" }}
+            - --legacy-metrics={{ .Values.legacyMetrics }}
           ports:
             - containerPort: 8080
               name: metrics

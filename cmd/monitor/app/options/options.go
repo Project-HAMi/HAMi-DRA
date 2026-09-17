@@ -47,6 +47,8 @@ type Options struct {
 	// CollectInterval is the interval at which metrics are collected.
 	// Defaults to 30s.
 	CollectInterval time.Duration
+	// LegacyMetrics additionally exports the legacy metric names.
+	LegacyMetrics bool
 }
 
 // NewOptions builds an empty options.
@@ -61,6 +63,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsBindAddress, "metrics-bind-address", ":8080", "The TCP address that the controller should bind to for serving prometheus metrics(e.g. 127.0.0.1:8080, :8080). It can be set to \"0\" to disable the metrics serving.")
 	flags.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", ":8000", "The TCP address that the controller should bind to for serving health probes(e.g. 127.0.0.1:8000, :8000)")
 	flags.DurationVar(&o.CollectInterval, "collect-interval", defaultCollectInterval, "The interval at which metrics are collected.")
+	flags.BoolVar(&o.LegacyMetrics, "legacy-metrics", true, "Export the legacy metric names in addition to the current ones.")
 }
 
 // Validate validates the options and returns aggregated errors.
