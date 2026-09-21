@@ -57,16 +57,16 @@ func TestCollect_NodeMetrics(t *testing.T) {
 	want := `
 # HELP hami_dra_gpu_memory_limit_bytes Device memory limit for a certain GPU
 # TYPE hami_dra_gpu_memory_limit_bytes gauge
-hami_dra_gpu_memory_limit_bytes{device_index="0",device_name="gpu0",device_type="V100",device_uuid="uuid-1",node="node1"} 16777216
+hami_dra_gpu_memory_limit_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 16777216
 # HELP hami_dra_gpu_core_limit_ratio Device core limit for a certain GPU
 # TYPE hami_dra_gpu_core_limit_ratio gauge
-hami_dra_gpu_core_limit_ratio{device_index="0",device_name="gpu0",device_type="V100",device_uuid="uuid-1",node="node1"} 1
+hami_dra_gpu_core_limit_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 1
 # HELP hami_dra_gpu_memory_allocated_bytes Device memory allocated for a certain GPU
 # TYPE hami_dra_gpu_memory_allocated_bytes gauge
-hami_dra_gpu_memory_allocated_bytes{device_index="0",device_name="gpu0",device_type="V100",device_uuid="uuid-1",node="node1"} 8388608
+hami_dra_gpu_memory_allocated_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 8388608
 # HELP hami_dra_gpu_core_allocated_ratio Device core allocated for a certain GPU
 # TYPE hami_dra_gpu_core_allocated_ratio gauge
-hami_dra_gpu_core_allocated_ratio{device_index="0",device_name="gpu0",device_type="V100",device_uuid="uuid-1",node="node1"} 0.5
+hami_dra_gpu_core_allocated_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 0.5
 `
 	names := []string{
 		"hami_dra_gpu_memory_limit_bytes",
@@ -83,10 +83,10 @@ func TestCollect_PodMetrics(t *testing.T) {
 	want := `
 # HELP hami_dra_vgpu_memory_allocated_bytes vGPU Device memory allocated for a container
 # TYPE hami_dra_vgpu_memory_allocated_bytes gauge
-hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 8388608
+hami_dra_vgpu_memory_allocated_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 8388608
 # HELP hami_dra_vgpu_core_allocated_ratio vGPU Device core allocated for a container
 # TYPE hami_dra_vgpu_core_allocated_ratio gauge
-hami_dra_vgpu_core_allocated_ratio{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 0.5
+hami_dra_vgpu_core_allocated_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 0.5
 `
 	names := []string{
 		"hami_dra_vgpu_memory_allocated_bytes",

@@ -22,32 +22,32 @@ var (
 	nodevGPUMemoryLimitDesc = prometheus.NewDesc(
 		"hami_dra_gpu_memory_limit_bytes",
 		"Device memory limit for a certain GPU",
-		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
 	nodevGPUCoreLimitDesc = prometheus.NewDesc(
 		"hami_dra_gpu_core_limit_ratio",
 		"Device core limit for a certain GPU",
-		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
 	nodevGPUMemoryAllocatedDesc = prometheus.NewDesc(
 		"hami_dra_gpu_memory_allocated_bytes",
 		"Device memory allocated for a certain GPU",
-		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
 	nodevGPUCoreAllocatedDesc = prometheus.NewDesc(
 		"hami_dra_gpu_core_allocated_ratio",
 		"Device core allocated for a certain GPU",
-		[]string{"node", "device_uuid", "device_index", "device_name", "device_type"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname"}, nil,
 	)
 	podvGPUMemoryAllocatedDesc = prometheus.NewDesc(
 		"hami_dra_vgpu_memory_allocated_bytes",
 		"vGPU Device memory allocated for a container",
-		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
 	)
 	podvGPUCoreAllocatedDesc = prometheus.NewDesc(
 		"hami_dra_vgpu_core_allocated_ratio",
 		"vGPU Device core allocated for a container",
-		[]string{"node", "device_uuid", "namespace", "pod"}, nil,
+		[]string{"nodeid", "deviceuuid", "deviceidx", "devicename", "devicebrand", "deviceproductname", "podnamespace", "podname"}, nil,
 	)
 )
 

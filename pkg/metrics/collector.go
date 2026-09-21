@@ -85,7 +85,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryTotal),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.ProductName,
+				device.Name, device.Brand, device.ProductName,
 			)
 
 			// hami_dra_gpu_core_limit_ratio
@@ -94,7 +94,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresTotal)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.ProductName,
+				device.Name, device.Brand, device.ProductName,
 			)
 
 			// hami_dra_gpu_memory_allocated_bytes
@@ -103,7 +103,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryUsed),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.ProductName,
+				device.Name, device.Brand, device.ProductName,
 			)
 
 			// hami_dra_gpu_core_allocated_ratio
@@ -112,7 +112,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresUsed)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.ProductName,
+				device.Name, device.Brand, device.ProductName,
 			)
 
 			if !c.legacy {
@@ -186,6 +186,10 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Cores)/coreScale,
 					claim.NodeName,
 					device.UUID,
+					deviceIdx,
+					device.Name,
+					device.Brand,
+					device.ProductName,
 					result.Namespace,
 					podName,
 				)
@@ -195,6 +199,10 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Memory),
 					claim.NodeName,
 					device.UUID,
+					deviceIdx,
+					device.Name,
+					device.Brand,
+					device.ProductName,
 					result.Namespace,
 					podName,
 				)

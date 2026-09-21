@@ -191,6 +191,8 @@ monitor:
   kubeAPIQPS: 40.0
   kubeAPIBurst: 60
   collectInterval: "30s"
+  ## Export the legacy metric names in addition to the current ones.
+  legacyMetrics: true
   ## Monitor service configuration
   service:
     ## Service type: ClusterIP, NodePort, or LoadBalancer
@@ -200,9 +202,6 @@ monitor:
     nodePort:
       ## Metrics port (NodePort). If not specified, Kubernetes will assign a random port
       metrics: ""
-
-## Export the legacy metric names in addition to the current ones.
-legacyMetrics: true
 
 # Certificate configuration
 certs:
