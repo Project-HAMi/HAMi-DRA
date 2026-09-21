@@ -1,5 +1,21 @@
+webhook:
+  image:
+    registry: ""
+    repository: hami-dra-webhook
+    tag: e2e
+
+monitor:
+  image:
+    registry: ""
+    repository: hami-dra-monitor
+    tag: e2e
+
 drivers:
   nvidia:
     enabled: false
   fake:
     enabled: true
+    image:
+      registry: ""
+      repository: hami-dra-fake-driver
+      tag: e2e

@@ -111,6 +111,18 @@ jobs:
           cluster_name: hami-dra-e2e
           node_image: kindest/node:v1.34.0
 
+      - name: Build chart test images
+        run: |
+          docker buildx build --load -t hami-dra-webhook:e2e -f docker/hami-dra-webhook/Dockerfile .
+          docker buildx build --load -t hami-dra-monitor:e2e -f docker/hami-dra-monitor/Dockerfile .
+          docker buildx build --load -t hami-dra-fake-driver:e2e -f docker/hami-dra-fake-driver/Dockerfile .
+
+      - name: Load chart test images
+        run: |
+          kind load docker-image --name hami-dra-e2e hami-dra-webhook:e2e
+          kind load docker-image --name hami-dra-e2e hami-dra-monitor:e2e
+          kind load docker-image --name hami-dra-e2e hami-dra-fake-driver:e2e
+
       - name: Install cert-manager
         run: |
           helm repo add jetstack https://charts.jetstack.io
