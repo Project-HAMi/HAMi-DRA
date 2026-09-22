@@ -114,63 +114,29 @@ monitor:
 
 The monitor exposes the following Prometheus metrics:
 
-### Node-Level Metrics
+| Metrics | Description | Example |
+| --- | --- | --- |
+| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1 |
+| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 2.5769803776e+10 |
+| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 0.3 |
+| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1.073741824e+10 |
+| hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 0.3 |
+| hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 1.073741824e+10 |
 
-#### GPUDeviceMemoryLimit
-Device memory limit for a GPU (in MB).
+### Legacy metrics
 
-**Labels**:
-- `nodeid`: Kubernetes node name
-- `deviceuuid`: GPU device UUID
-- `deviceidx`: Device index on the node
-- `devicename`: Device name
-- `devicebrand`: Device brand (e.g., Tesla)
-- `deviceproductname`: Device product name (e.g., Tesla V100)
+The old metric names are still exported while `--legacy-metrics` is enabled (the default); set `monitor.legacyMetrics: false` in the Helm values to export only the new names.
 
-**Example**:
-```
-GPUDeviceMemoryLimit{nodeid="node1", deviceuuid="gpu-uuid-123", deviceidx="0", devicename="gpu0", devicebrand="Tesla", deviceproductname="Tesla V100"} 16000
-```
+| Old metric | New metric |
+| --- | --- |
+| GPUDeviceCoreLimit | hami_dra_gpu_core_limit_ratio |
+| GPUDeviceMemoryLimit | hami_dra_gpu_memory_limit_bytes |
+| GPUDeviceCoreAllocated | hami_dra_gpu_core_allocated_ratio |
+| GPUDeviceMemoryAllocated | hami_dra_gpu_memory_allocated_bytes |
+| vGPUDeviceCoreAllocated | hami_dra_vgpu_core_allocated_ratio |
+| vGPUDeviceMemoryAllocated | hami_dra_vgpu_memory_allocated_bytes |
 
-#### GPUDeviceCoreLimit
-Device core limit for a GPU.
-
-**Labels**: Same as `GPUDeviceMemoryLimit`
-
-#### GPUDeviceMemoryAllocated
-Device memory currently allocated for a GPU (in MB).
-
-**Labels**: Same as `GPUDeviceMemoryLimit`
-
-#### GPUDeviceCoreAllocated
-Device cores currently allocated for a GPU.
-
-**Labels**: Same as `GPUDeviceMemoryLimit`
-
-### Pod-Level Metrics
-
-#### vGPUDeviceMemoryAllocated
-vGPU device memory allocated for a container (in MB).
-
-**Labels**:
-- `nodeid`: Kubernetes node name
-- `deviceuuid`: GPU device UUID
-- `deviceidx`: Device index on the node
-- `devicename`: Device name
-- `devicebrand`: Device brand
-- `deviceproductname`: Device product name
-- `podnamespace`: Pod namespace
-- `podname`: Pod name
-
-**Example**:
-```
-vGPUDeviceMemoryAllocated{nodeid="node1", deviceuuid="gpu-uuid-123", deviceidx="0", devicename="gpu0", devicebrand="Tesla", deviceproductname="Tesla V100", podnamespace="default", podname="my-pod"} 8000
-```
-
-#### vGPUDeviceCoreAllocated
-vGPU device cores allocated for a container.
-
-**Labels**: Same as `vGPUDeviceMemoryAllocated`
+Legacy metrics keep their original units: memory in MB and cores on a 0-100 scale.
 
 ## Endpoints
 
@@ -263,7 +229,7 @@ kubectl get svc hami-dra-monitor -n <namespace>
 kubectl port-forward svc/hami-dra-monitor 8080:8080 -n <namespace>
 
 # Check metrics
-curl http://localhost:8080/metrics | grep GPUDevice
+curl http://localhost:8080/metrics | grep hami_dra_
 ```
 
 ### Check Cache Sync Status

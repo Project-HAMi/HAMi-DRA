@@ -24,13 +24,19 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// coreScale converts the 0-100 core accounting into the 0-1 fraction
+// that a Prometheus _ratio suffix promises.
+const coreScale = 100
+
 type Collector struct {
-	cache *cache.Cache
+	cache  *cache.Cache
+	legacy bool
 }
 
-func NewCollector(cache *cache.Cache) *Collector {
+func NewCollector(cache *cache.Cache, legacy bool) *Collector {
 	return &Collector{
-		cache: cache,
+		cache:  cache,
+		legacy: legacy,
 	}
 }
 
@@ -42,6 +48,16 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nodevGPUCoreAllocatedDesc
 	ch <- podvGPUCoreAllocatedDesc
 	ch <- podvGPUMemoryAllocatedDesc
+
+	if !c.legacy {
+		return
+	}
+	ch <- legacyNodevGPUMemoryLimitDesc
+	ch <- legacyNodevGPUCoreLimitDesc
+	ch <- legacyNodevGPUMemoryAllocatedDesc
+	ch <- legacyNodevGPUCoreAllocatedDesc
+	ch <- legacyPodvGPUCoreAllocatedDesc
+	ch <- legacyPodvGPUMemoryAllocatedDesc
 }
 
 // Collect implements prometheus.Collector
@@ -63,36 +79,76 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 		for idx, device := range devices {
 			deviceIdx := strconv.Itoa(idx)
 
-			// GPUDeviceMemoryLimit
+			// hami_dra_gpu_memory_limit_bytes
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUMemoryLimitDesc,
+				prometheus.GaugeValue,
+				float64(device.MemoryTotal),
+				nodeName, device.UUID, deviceIdx,
+				device.Name, device.Brand, device.ProductName,
+			)
+
+			// hami_dra_gpu_core_limit_ratio
+			ch <- prometheus.MustNewConstMetric(
+				nodevGPUCoreLimitDesc,
+				prometheus.GaugeValue,
+				float64(device.CoresTotal)/coreScale,
+				nodeName, device.UUID, deviceIdx,
+				device.Name, device.Brand, device.ProductName,
+			)
+
+			// hami_dra_gpu_memory_allocated_bytes
+			ch <- prometheus.MustNewConstMetric(
+				nodevGPUMemoryAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(device.MemoryUsed),
+				nodeName, device.UUID, deviceIdx,
+				device.Name, device.Brand, device.ProductName,
+			)
+
+			// hami_dra_gpu_core_allocated_ratio
+			ch <- prometheus.MustNewConstMetric(
+				nodevGPUCoreAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(device.CoresUsed)/coreScale,
+				nodeName, device.UUID, deviceIdx,
+				device.Name, device.Brand, device.ProductName,
+			)
+
+			if !c.legacy {
+				continue
+			}
+
+			// GPUDeviceMemoryLimit (deprecated)
+			ch <- prometheus.MustNewConstMetric(
+				legacyNodevGPUMemoryLimitDesc,
 				prometheus.GaugeValue,
 				float64(device.MemoryTotal)/1024/1024, // convert to MB
 				nodeName, device.UUID, deviceIdx,
 				device.Name, device.Brand, device.ProductName,
 			)
 
-			// GPUDeviceCoreLimit
+			// GPUDeviceCoreLimit (deprecated)
 			ch <- prometheus.MustNewConstMetric(
-				nodevGPUCoreLimitDesc,
+				legacyNodevGPUCoreLimitDesc,
 				prometheus.GaugeValue,
 				float64(device.CoresTotal),
 				nodeName, device.UUID, deviceIdx,
 				device.Name, device.Brand, device.ProductName,
 			)
 
-			// GPUDeviceMemoryAllocated
+			// GPUDeviceMemoryAllocated (deprecated)
 			ch <- prometheus.MustNewConstMetric(
-				nodevGPUMemoryAllocatedDesc,
+				legacyNodevGPUMemoryAllocatedDesc,
 				prometheus.GaugeValue,
 				float64(device.MemoryUsed)/1024/1024, // convert to MB
 				nodeName, device.UUID, deviceIdx,
 				device.Name, device.Brand, device.ProductName,
 			)
 
-			// GPUDeviceCoreAllocated
+			// GPUDeviceCoreAllocated (deprecated)
 			ch <- prometheus.MustNewConstMetric(
-				nodevGPUCoreAllocatedDesc,
+				legacyNodevGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
 				float64(device.CoresUsed),
 				nodeName, device.UUID, deviceIdx,
@@ -127,7 +183,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUCoreAllocatedDesc,
 					prometheus.GaugeValue,
-					float64(result.Cores),
+					float64(result.Cores)/coreScale,
 					claim.NodeName,
 					device.UUID,
 					deviceIdx,
@@ -139,6 +195,37 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				)
 				ch <- prometheus.MustNewConstMetric(
 					podvGPUMemoryAllocatedDesc,
+					prometheus.GaugeValue,
+					float64(result.Memory),
+					claim.NodeName,
+					device.UUID,
+					deviceIdx,
+					device.Name,
+					device.Brand,
+					device.ProductName,
+					result.Namespace,
+					podName,
+				)
+
+				if !c.legacy {
+					continue
+				}
+
+				ch <- prometheus.MustNewConstMetric(
+					legacyPodvGPUCoreAllocatedDesc,
+					prometheus.GaugeValue,
+					float64(result.Cores),
+					claim.NodeName,
+					device.UUID,
+					deviceIdx,
+					device.Name,
+					device.Brand,
+					device.ProductName,
+					result.Namespace,
+					podName,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					legacyPodvGPUMemoryAllocatedDesc,
 					prometheus.GaugeValue,
 					float64(result.Memory)/1024/1024,
 					claim.NodeName,

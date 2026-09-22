@@ -37,6 +37,11 @@ spec:
             - --kube-api-qps={{ .Values.monitor.kubeAPIQPS | default 40.0 }}
             - --kube-api-burst={{ .Values.monitor.kubeAPIBurst | default 60 }}
             - --collect-interval={{ .Values.monitor.collectInterval | default "30s" }}
+            {{- /* The monitor defaults to true, so only pass the flag when legacy metrics
+            are disabled. This keeps the chart installable on older images that do not support the flag. */}}
+            {{- if not .Values.monitor.legacyMetrics }}
+            - --legacy-metrics=false
+            {{- end }}
           ports:
             - containerPort: 8080
               name: metrics
