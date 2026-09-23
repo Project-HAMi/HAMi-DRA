@@ -63,12 +63,13 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	needPatch := false
 	rcNameList := []string{}
 	asTemplate := a.ResourceClaimTemplate
+	dryRun := req.DryRun != nil && *req.DryRun
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList, asTemplate)
+		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList, asTemplate, dryRun)
 		if err != nil {
-			a.deleteResourceClaims(ctx, pod.Namespace, append(rcNameList, rcNames...), asTemplate)
+			a.deleteResourceClaims(ctx, pod.Namespace, append(rcNameList, rcNames...), asTemplate, dryRun)
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		for _, rcName := range rcNames {
@@ -97,7 +98,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	pod.Labels[constants.DraLabel] = "true"
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
-		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList, asTemplate)
+		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList, asTemplate, dryRun)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
@@ -124,7 +125,10 @@ func claimKind(asTemplate bool) string {
 	return "ResourceClaim"
 }
 
-func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string, asTemplate bool) {
+func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string, asTemplate bool, dryRun bool) {
+	if dryRun {
+		return
+	}
 	for _, rcName := range rcNames {
 		obj := newClaimObject(rcName, namespace, resourceapi.ResourceClaimSpec{}, asTemplate)
 		if deletionErr := a.Client.Delete(ctx, obj); deletionErr != nil {
@@ -143,10 +147,10 @@ func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 	return nil
 }
 
-func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string, asTemplate bool) ([]string, error) {
+func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string, asTemplate bool, dryRun bool) ([]string, error) {
 	var rcNames []string
 	cleanup := func() {
-		a.deleteResourceClaims(ctx, pod.Namespace, append(createdClaims, rcNames...), asTemplate)
+		a.deleteResourceClaims(ctx, pod.Namespace, append(createdClaims, rcNames...), asTemplate, dryRun)
 	}
 
 	for _, cfg := range a.configs() {
@@ -181,13 +185,14 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 			return nil, err
 		}
 
-		obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
-		if err := a.Client.Create(ctx, obj); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("failed to create %s %s/%s: %w", claimKind(asTemplate), pod.Namespace, rcName, err)
+		if !dryRun {
+			obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
+			if err := a.Client.Create(ctx, obj); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("failed to create %s %s/%s: %w", claimKind(asTemplate), pod.Namespace, rcName, err)
+			}
+			klog.V(4).Infof("Successfully created %s %s/%s", claimKind(asTemplate), pod.Namespace, rcName)
 		}
-
-		klog.V(4).Infof("Successfully created %s %s/%s", claimKind(asTemplate), pod.Namespace, rcName)
 		rcNames = append(rcNames, rcName)
 	}
 	return rcNames, nil
