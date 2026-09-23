@@ -199,6 +199,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.Client = hookManager.GetClient()
 	mutatingAdmission.DeviceConfig = deviceConfig
 	mutatingAdmission.DeviceConfigs = deviceConfigs
+	mutatingAdmission.ResourceClaimTemplate = opts.ResourceClaimTemplate
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
 
 	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}
@@ -211,6 +212,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	validatingAdmission := &dra.ValidatingAdmission{}
 	validatingAdmission.Decoder = decoder
 	validatingAdmission.Client = hookManager.GetClient()
+	validatingAdmission.Reader = hookManager.GetAPIReader()
 	hookServer.Register("/validate", &webhook.Admission{Handler: validatingAdmission})
 
 	validatingAdmissionVolcano := &volcano.ValidatingAdmission{}

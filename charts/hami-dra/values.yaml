@@ -155,6 +155,10 @@ webhook:
       enabled: true
       # "Fail" or "Ignore", see webhook.config.mutating.failurePolicy.
       failurePolicy: Fail
+    # Create a ResourceClaimTemplate instead of a ResourceClaim for every converted Pod.
+    # Kubernetes generates the ResourceClaim from the template. This is what Kueue can admit;
+    # a Pod that references a ResourceClaim directly is rejected.
+    resourceClaimTemplate: false
 
 # Monitor deployment configuration
 monitor:

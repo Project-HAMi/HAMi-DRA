@@ -18,17 +18,21 @@ package dra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -377,7 +381,7 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		}},
 	}
 
-	names, err := admission.handleContainer(context.Background(), container, pod, nil)
+	names, err := admission.handleContainer(context.Background(), container, pod, nil, false, false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{
 		"default-mixed-workload-nvidia",
@@ -391,4 +395,236 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
 		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
 	}
+}
+
+func newGPUPodCreateRequest(t *testing.T, labels map[string]string) admission.Request {
+	t.Helper()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "trainer", Namespace: "default", Labels: labels},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "worker",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				corev1.ResourceName("nvidia.com/gpu"):    resource.MustParse("1"),
+				corev1.ResourceName("nvidia.com/gpumem"): resource.MustParse("1024"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	return admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Namespace: "default",
+		Operation: admissionv1.Create,
+		Object:    runtime.RawExtension{Raw: raw},
+	}}
+}
+
+// patchedPodResourceClaims extracts spec.resourceClaims from the JSON patch returned by Handle.
+func patchedPodResourceClaims(t *testing.T, resp admission.Response) []corev1.PodResourceClaim {
+	t.Helper()
+	for _, op := range resp.Patches {
+		if op.Path != "/spec/resourceClaims" {
+			continue
+		}
+		raw, err := json.Marshal(op.Value)
+		require.NoError(t, err)
+		var claims []corev1.PodResourceClaim
+		require.NoError(t, json.Unmarshal(raw, &claims))
+		return claims
+	}
+	t.Fatalf("no /spec/resourceClaims patch in response: %+v", resp.Patches)
+	return nil
+}
+
+func TestHandleResourceClaimTemplate(t *testing.T) {
+	tests := []struct {
+		name         string
+		enabled      bool
+		wantTemplate bool
+	}{
+		{name: "enabled uses template", enabled: true, wantTemplate: true},
+		{name: "disabled keeps claim", enabled: false, wantTemplate: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sch := runtime.NewScheme()
+			require.NoError(t, scheme.AddToScheme(sch))
+			fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+			a := &MutatingAdmission{
+				Decoder:               admission.NewDecoder(sch),
+				Client:                fakeClient,
+				DeviceConfig:          defaultNvidiaDeviceConfig(),
+				ResourceClaimTemplate: tt.enabled,
+			}
+
+			resp := a.Handle(context.Background(), newGPUPodCreateRequest(t, nil))
+			require.True(t, resp.Allowed, "unexpected rejection: %v", resp.Result)
+
+			const name = "default-trainer-worker-nvidia"
+			podClaims := patchedPodResourceClaims(t, resp)
+			require.Len(t, podClaims, 1)
+			assert.Equal(t, name, podClaims[0].Name)
+
+			key := client.ObjectKey{Namespace: "default", Name: name}
+			template := &resourceapi.ResourceClaimTemplate{}
+			claim := &resourceapi.ResourceClaim{}
+			if tt.wantTemplate {
+				require.NotNil(t, podClaims[0].ResourceClaimTemplateName)
+				assert.Equal(t, name, *podClaims[0].ResourceClaimTemplateName)
+				assert.Nil(t, podClaims[0].ResourceClaimName)
+
+				require.NoError(t, fakeClient.Get(context.Background(), key, template))
+				assert.Equal(t, "true", template.Labels[constants.DraLabel])
+				request := template.Spec.Spec.Devices.Requests[0].Exactly
+				assert.Equal(t, int64(1), request.Count)
+				assert.Equal(t, resource.MustParse("1073741824"), request.Capacity.Requests["memory"])
+				assert.True(t, apierrors.IsNotFound(fakeClient.Get(context.Background(), key, claim)))
+			} else {
+				require.NotNil(t, podClaims[0].ResourceClaimName)
+				assert.Equal(t, name, *podClaims[0].ResourceClaimName)
+				assert.Nil(t, podClaims[0].ResourceClaimTemplateName)
+
+				require.NoError(t, fakeClient.Get(context.Background(), key, claim))
+				assert.True(t, apierrors.IsNotFound(fakeClient.Get(context.Background(), key, template)))
+			}
+		})
+	}
+}
+
+func TestHandleDryRunSkipsPersistentWrites(t *testing.T) {
+	tests := []struct {
+		name     string
+		template bool
+	}{
+		{name: "template", template: true},
+		{name: "claim", template: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sch := runtime.NewScheme()
+			require.NoError(t, scheme.AddToScheme(sch))
+			fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+			a := &MutatingAdmission{
+				Decoder:               admission.NewDecoder(sch),
+				Client:                fakeClient,
+				DeviceConfig:          defaultNvidiaDeviceConfig(),
+				ResourceClaimTemplate: tt.template,
+			}
+
+			req := newGPUPodCreateRequest(t, nil)
+			dryRun := true
+			req.DryRun = &dryRun
+			resp := a.Handle(context.Background(), req)
+			require.True(t, resp.Allowed, "unexpected rejection: %v", resp.Result)
+
+			const name = "default-trainer-worker-nvidia"
+			podClaims := patchedPodResourceClaims(t, resp)
+			require.Len(t, podClaims, 1)
+			assert.Equal(t, name, podClaims[0].Name)
+			if tt.template {
+				require.NotNil(t, podClaims[0].ResourceClaimTemplateName)
+				assert.Equal(t, name, *podClaims[0].ResourceClaimTemplateName)
+			} else {
+				require.NotNil(t, podClaims[0].ResourceClaimName)
+				assert.Equal(t, name, *podClaims[0].ResourceClaimName)
+			}
+
+			key := client.ObjectKey{Namespace: "default", Name: name}
+			assert.True(t, apierrors.IsNotFound(fakeClient.Get(context.Background(), key, &resourceapi.ResourceClaimTemplate{})))
+			assert.True(t, apierrors.IsNotFound(fakeClient.Get(context.Background(), key, &resourceapi.ResourceClaim{})))
+		})
+	}
+}
+
+func TestHandleDryRunDoesNotDeleteExistingClaims(t *testing.T) {
+	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorNvidia, config.VendorHygon})
+	require.NoError(t, err)
+
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	const nvidiaName = "default-trainer-worker-nvidia"
+	existing := &resourceapi.ResourceClaimTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: nvidiaName, Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"}},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
+	a := &MutatingAdmission{
+		Decoder:               admission.NewDecoder(sch),
+		Client:                fakeClient,
+		DeviceConfigs:         deviceConfigs,
+		ResourceClaimTemplate: true,
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "trainer", Namespace: "default"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "worker",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				corev1.ResourceName("nvidia.com/gpu"):     resource.MustParse("1"),
+				corev1.ResourceName("hygon.com/hcunum"):   resource.MustParse("1"),
+				corev1.ResourceName("hygon.com/hcucores"): resource.MustParse("50"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	dryRun := true
+	resp := a.Handle(context.Background(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Namespace: "default",
+		Operation: admissionv1.Create,
+		DryRun:    &dryRun,
+		Object:    runtime.RawExtension{Raw: raw},
+	}})
+	assert.False(t, resp.Allowed, "invalid hygon core conversion should still reject the request")
+
+	require.NoError(t, fakeClient.Get(context.Background(),
+		client.ObjectKey{Namespace: "default", Name: nvidiaName}, &resourceapi.ResourceClaimTemplate{}),
+		"dry-run must not delete an existing template")
+}
+
+func TestHandleResourceClaimTemplateRollsBackOnFailure(t *testing.T) {
+	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorNvidia, config.VendorHygon})
+	require.NoError(t, err)
+
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	conflicting := &resourceapi.ResourceClaimTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "default-trainer-worker-hygon", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(conflicting).Build()
+	a := &MutatingAdmission{
+		Decoder:               admission.NewDecoder(sch),
+		Client:                fakeClient,
+		DeviceConfigs:         deviceConfigs,
+		ResourceClaimTemplate: true,
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "trainer",
+			Namespace: "default",
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "worker",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				corev1.ResourceName("nvidia.com/gpu"):   resource.MustParse("1"),
+				corev1.ResourceName("hygon.com/hcunum"): resource.MustParse("1"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+
+	resp := a.Handle(context.Background(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Namespace: "default",
+		Operation: admissionv1.Create,
+		Object:    runtime.RawExtension{Raw: raw},
+	}})
+	assert.False(t, resp.Allowed)
+
+	err = fakeClient.Get(context.Background(),
+		client.ObjectKey{Namespace: "default", Name: "default-trainer-worker-nvidia"}, &resourceapi.ResourceClaimTemplate{})
+	assert.True(t, apierrors.IsNotFound(err), "template created before the failure should be rolled back, got: %v", err)
+	require.NoError(t, fakeClient.Get(context.Background(),
+		client.ObjectKey{Namespace: "default", Name: "default-trainer-worker-hygon"}, &resourceapi.ResourceClaimTemplate{}),
+		"pre-existing template must not be deleted by the rollback")
 }
