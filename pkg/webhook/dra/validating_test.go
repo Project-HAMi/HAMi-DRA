@@ -172,4 +172,49 @@ func TestGetResourceClaimName(t *testing.T) {
 	names := getResourceClaimName(pod)
 
 	assert.Equal(t, []string{"default-pod-gpu"}, names, "only entries with a resolved ResourceClaimName should be returned")
+	assert.Equal(t, []string{"default-pod-template"}, getResourceClaimTemplateName(pod),
+		"only entries with a ResourceClaimTemplateName should be returned")
+}
+
+func TestValidatingHandle_DeletesOnlyOwnResourceClaimTemplates(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+
+	own := &resourceapi.ResourceClaimTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-trainer-worker-nvidia",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+	}
+	userOwned := &resourceapi.ResourceClaimTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-nic", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(own, userOwned).Build()
+
+	ownName, userName, missingName := own.Name, userOwned.Name, "default-trainer-worker-hygon"
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "trainer",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+		Spec: corev1.PodSpec{
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: ownName, ResourceClaimTemplateName: &ownName},
+				{Name: "nic", ResourceClaimTemplateName: &userName},
+				{Name: missingName, ResourceClaimTemplateName: &missingName},
+			},
+		},
+	}
+
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
+	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed, "pod deletion should always be allowed")
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: ownName}, &resourceapi.ResourceClaimTemplate{})
+	assert.True(t, apierrors.IsNotFound(err), "webhook-created template should have been deleted, got: %v", err)
+	assert.NoError(t,
+		fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: userName}, &resourceapi.ResourceClaimTemplate{}),
+		"templates without the DRA label must not be deleted")
 }

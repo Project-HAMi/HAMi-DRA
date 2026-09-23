@@ -43,6 +43,9 @@ type MutatingAdmission struct {
 	Client        client.Client
 	DeviceConfig  *config.DRADeviceConfig
 	DeviceConfigs []*config.DRADeviceConfig
+	// ResourceClaimTemplate makes every converted Pod reference a ResourceClaimTemplate.
+	// Kubernetes then generates the ResourceClaim for that Pod.
+	ResourceClaimTemplate bool
 }
 
 // Check if our MutatingAdmission implements necessary interface
@@ -59,22 +62,26 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	klog.V(5).Infof("Mutating Pod(%s/%s) for request: %s", req.Namespace, pod.Name, req.Operation)
 	needPatch := false
 	rcNameList := []string{}
+	asTemplate := a.ResourceClaimTemplate
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList)
+		rcNames, err := a.handleContainer(ctx, container, pod, rcNameList, asTemplate)
 		if err != nil {
-			a.deleteResourceClaims(ctx, pod.Namespace, append(rcNameList, rcNames...))
+			a.deleteResourceClaims(ctx, pod.Namespace, append(rcNameList, rcNames...), asTemplate)
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		for _, rcName := range rcNames {
 			needPatch = true
 			rcNameList = append(rcNameList, rcName)
 			container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rcName})
-			pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, corev1.PodResourceClaim{
-				Name:              rcName,
-				ResourceClaimName: &rcName,
-			})
+			podClaim := corev1.PodResourceClaim{Name: rcName}
+			if asTemplate {
+				podClaim.ResourceClaimTemplateName = &rcName
+			} else {
+				podClaim.ResourceClaimName = &rcName
+			}
+			pod.Spec.ResourceClaims = append(pod.Spec.ResourceClaims, podClaim)
 		}
 	}
 
@@ -90,21 +97,38 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	pod.Labels[constants.DraLabel] = "true"
 	marshaledBytes, err := json.Marshal(pod)
 	if err != nil {
-		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList)
+		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList, asTemplate)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string) {
+// newClaimObject wraps spec in a ResourceClaim, or in a ResourceClaimTemplate when asTemplate is set.
+// Templates carry the DRA label so that Pod deletion only removes templates this webhook created.
+func newClaimObject(name, namespace string, spec resourceapi.ResourceClaimSpec, asTemplate bool) client.Object {
+	meta := metav1.ObjectMeta{Name: name, Namespace: namespace}
+	if asTemplate {
+		meta.Labels = map[string]string{constants.DraLabel: "true"}
+		return &resourceapi.ResourceClaimTemplate{
+			ObjectMeta: meta,
+			Spec:       resourceapi.ResourceClaimTemplateSpec{Spec: spec},
+		}
+	}
+	return &resourceapi.ResourceClaim{ObjectMeta: meta, Spec: spec}
+}
+
+func claimKind(asTemplate bool) string {
+	if asTemplate {
+		return "ResourceClaimTemplate"
+	}
+	return "ResourceClaim"
+}
+
+func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string, asTemplate bool) {
 	for _, rcName := range rcNames {
-		if deletionErr := a.Client.Delete(ctx, &resourceapi.ResourceClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      rcName,
-				Namespace: namespace,
-			},
-		}); deletionErr != nil {
-			klog.V(5).Infof("Failed to delete ResourceClaim(%s/%s) after an error occurs", namespace, rcName)
+		obj := newClaimObject(rcName, namespace, resourceapi.ResourceClaimSpec{}, asTemplate)
+		if deletionErr := a.Client.Delete(ctx, obj); deletionErr != nil {
+			klog.V(5).Infof("Failed to delete %s(%s/%s) after an error occurs", claimKind(asTemplate), namespace, rcName)
 		}
 	}
 }
@@ -119,10 +143,10 @@ func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 	return nil
 }
 
-func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string) ([]string, error) {
+func (a *MutatingAdmission) handleContainer(ctx context.Context, container *corev1.Container, pod *corev1.Pod, createdClaims []string, asTemplate bool) ([]string, error) {
 	var rcNames []string
 	cleanup := func() {
-		a.deleteResourceClaims(ctx, pod.Namespace, append(createdClaims, rcNames...))
+		a.deleteResourceClaims(ctx, pod.Namespace, append(createdClaims, rcNames...), asTemplate)
 	}
 
 	for _, cfg := range a.configs() {
@@ -157,12 +181,13 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 			return nil, err
 		}
 
-		if err := a.Client.Create(ctx, resourceclaim); err != nil {
+		obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
+		if err := a.Client.Create(ctx, obj); err != nil {
 			cleanup()
-			return nil, fmt.Errorf("failed to create ResourceClaim %s/%s: %w", pod.Namespace, rcName, err)
+			return nil, fmt.Errorf("failed to create %s %s/%s: %w", claimKind(asTemplate), pod.Namespace, rcName, err)
 		}
 
-		klog.V(4).Infof("Successfully created ResourceClaim %s/%s", pod.Namespace, rcName)
+		klog.V(4).Infof("Successfully created %s %s/%s", claimKind(asTemplate), pod.Namespace, rcName)
 		rcNames = append(rcNames, rcName)
 	}
 	return rcNames, nil

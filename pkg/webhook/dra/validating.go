@@ -35,12 +35,14 @@ import (
 type ValidatingAdmission struct {
 	Decoder admission.Decoder
 	Client  client.Client
+	// Reader reads ResourceClaimTemplates directly from the API server to avoid a cluster-wide informer.
+	Reader client.Reader
 }
 
 // Check if our ValidatingAdmission implements necessary interface
 var _ admission.Handler = &ValidatingAdmission{}
 
-// Handle deletes the ResourceClaim when a DRA-managed Pod is deleted.
+// Handle deletes the ResourceClaims and ResourceClaimTemplates when a DRA-managed Pod is deleted.
 func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
 	pod := &corev1.Pod{}
 
@@ -66,7 +68,30 @@ func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request)
 		}
 	}
 
+	for _, templateName := range getResourceClaimTemplateName(pod) {
+		v.deleteResourceClaimTemplate(ctx, pod.Namespace, templateName)
+	}
+
 	return admission.Allowed("")
+}
+
+// deleteResourceClaimTemplate deletes the template only if the mutating webhook created it,
+// so user-managed templates shared by other Pods are left alone.
+func (v *ValidatingAdmission) deleteResourceClaimTemplate(ctx context.Context, namespace, name string) {
+	template := &resourceapi.ResourceClaimTemplate{}
+	if err := v.Reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, template); err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Warningf("Failed to get ResourceClaimTemplate %s/%s: %v", namespace, name, err)
+		}
+		return
+	}
+	if _, ok := template.Labels[constants.DraLabel]; !ok {
+		return
+	}
+	err := v.Client.Delete(ctx, template, client.Preconditions{UID: &template.UID})
+	if err != nil && !apierrors.IsNotFound(err) {
+		klog.Warningf("Failed to delete ResourceClaimTemplate %s/%s: %v", namespace, name, err)
+	}
 }
 
 func getResourceClaimName(pod *corev1.Pod) []string {
@@ -74,6 +99,16 @@ func getResourceClaimName(pod *corev1.Pod) []string {
 	for _, rc := range pod.Spec.ResourceClaims {
 		if rc.ResourceClaimName != nil {
 			names = append(names, *rc.ResourceClaimName)
+		}
+	}
+	return names
+}
+
+func getResourceClaimTemplateName(pod *corev1.Pod) []string {
+	names := make([]string, 0, len(pod.Spec.ResourceClaims))
+	for _, rc := range pod.Spec.ResourceClaims {
+		if rc.ResourceClaimTemplateName != nil {
+			names = append(names, *rc.ResourceClaimTemplateName)
 		}
 	}
 	return names
