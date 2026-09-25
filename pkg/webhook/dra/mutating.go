@@ -69,6 +69,10 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	needPatch := false
 	rcNameList := []string{}
 	asTemplate := a.ResourceClaimTemplate
+	warnings := ExtendedResourceWarnings(ctx, a.Client, a.configs(), pod.Spec.Containers)
+	for _, w := range warnings {
+		klog.Warningf("Pod(%s/%s): %s", req.Namespace, pod.Name, w)
+	}
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
@@ -106,7 +110,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList, asTemplate)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
 }
 
 // newClaimObject wraps spec in a ResourceClaim, or in a ResourceClaimTemplate when asTemplate is set.
