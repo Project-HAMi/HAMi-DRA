@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
@@ -57,6 +58,10 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	}
 
 	klog.V(5).Infof("Mutating Pod(%s/%s) for request: %s", req.Namespace, pod.Name, req.Operation)
+	warnings := ExtendedResourceWarnings(ctx, a.Client, a.configs(), pod.Spec.Containers)
+	for _, w := range warnings {
+		klog.Warningf("Pod(%s/%s): %s", req.Namespace, pod.Name, w)
+	}
 	needPatch := false
 	rcNameList := []string{}
 
@@ -93,7 +98,41 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
+}
+
+// ExtendedResourceWarnings warns when a resource the webhooks strip is also
+// claimed by a DeviceClass through extendedResourceName (KEP-5004), because the
+// scheduler then no longer sees the extended resource request.
+func ExtendedResourceWarnings(ctx context.Context, c client.Reader, cfgs []*config.DRADeviceConfig, containers []corev1.Container) []string {
+	used := map[string]bool{}
+	for _, container := range containers {
+		for _, cfg := range cfgs {
+			if _, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCountName)]; ok {
+				used[cfg.ResourceCountName] = true
+			}
+		}
+	}
+	if len(used) == 0 {
+		return nil
+	}
+
+	// The cached List waits for the informer to sync, which never happens
+	// without RBAC on deviceclasses. Bound it so a warning can't block admission.
+	listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	classes := &resourceapi.DeviceClassList{}
+	if err := c.List(listCtx, classes); err != nil {
+		klog.Warningf("Failed to list DeviceClasses: %v", err)
+		return nil
+	}
+	var warnings []string
+	for _, dc := range classes.Items {
+		if name := dc.Spec.ExtendedResourceName; name != nil && used[*name] {
+			warnings = append(warnings, fmt.Sprintf("resource %s is moved to a DRA claim by HAMi-DRA, but DeviceClass %s also uses it as extendedResourceName", *name, dc.Name))
+		}
+	}
+	return warnings
 }
 
 func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string) {
