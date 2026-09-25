@@ -629,3 +629,28 @@ func TestHandleResourceClaimTemplateRollsBackOnFailure(t *testing.T) {
 		client.ObjectKey{Namespace: "default", Name: "default-trainer-worker-hygon"}, &resourceapi.ResourceClaimTemplate{}),
 		"pre-existing template must not be deleted by the rollback")
 }
+
+func TestHandleUpdateStripsReappliedResources(t *testing.T) {
+	a := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
+	gpu := corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1"), "nvidia.com/gpumem": resource.MustParse("1000")}
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Name:      "c",
+		Resources: corev1.ResourceRequirements{Limits: gpu.DeepCopy(), Requests: gpu.DeepCopy()},
+	}}}}
+
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: runtime.RawExtension{Raw: raw}}}
+	resp := a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Limits)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Requests)
+
+	raw, err = json.Marshal(pod)
+	require.NoError(t, err)
+	req.Object.Raw = raw
+	resp = a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.Empty(t, resp.Patches, "nothing to strip on a plain update")
+}
