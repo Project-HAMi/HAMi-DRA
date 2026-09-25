@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,6 +58,9 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	}
 
 	klog.V(5).Infof("Mutating Pod(%s/%s) for request: %s", req.Namespace, pod.Name, req.Operation)
+	if req.Operation == admissionv1.Update {
+		return a.handleUpdate(req, pod)
+	}
 	needPatch := false
 	rcNameList := []string{}
 
@@ -94,6 +98,40 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+}
+
+// handleUpdate strips the converted resources again when a pod that already
+// got its claims is re-applied, since pod resources can't change after create.
+func (a *MutatingAdmission) handleUpdate(req admission.Request, pod *corev1.Pod) admission.Response {
+	if !stripConverted(pod.Spec.Containers, a.configs()) {
+		return admission.Allowed("")
+	}
+	marshaledBytes, err := json.Marshal(pod)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+}
+
+// stripConverted removes the resources this webhook converts to claims and
+// reports whether any were found.
+func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfig) bool {
+	found := false
+	for i := range containers {
+		res := &containers[i].Resources
+		for _, cfg := range cfgs {
+			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName} {
+				_, inLimits := res.Limits[corev1.ResourceName(name)]
+				_, inRequests := res.Requests[corev1.ResourceName(name)]
+				if inLimits || inRequests {
+					delete(res.Limits, corev1.ResourceName(name))
+					delete(res.Requests, corev1.ResourceName(name))
+					found = true
+				}
+			}
+		}
+	}
+	return found
 }
 
 func (a *MutatingAdmission) deleteResourceClaims(ctx context.Context, namespace string, rcNames []string) {
