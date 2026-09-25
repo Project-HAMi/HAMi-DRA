@@ -287,3 +287,47 @@ func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 		exactly.Selectors[0].CEL.Expression,
 	)
 }
+
+func TestHandleWarnsOnExtendedResourceConflict(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	jobRaw, err := json.Marshal(quickstartJob)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: quickstartJob.Namespace,
+		Object:    runtime.RawExtension{Raw: jobRaw},
+	}}
+
+	for _, tc := range []struct {
+		name         string
+		extendedName string
+		wantWarnings int
+	}{
+		{"conflict", "nvidia.com/gpu", 1},
+		{"other resource", "example.com/gpu", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dc := &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "gpu"},
+				Spec:       resourceapi.DeviceClassSpec{ExtendedResourceName: &tc.extendedName},
+			}
+			a := &MutatingAdmission{
+				Decoder: admission.NewDecoder(sch),
+				Client:  fake.NewClientBuilder().WithScheme(sch).WithObjects(dc).Build(),
+				DeviceConfig: &config.DRADeviceConfig{
+					ResourceCountName:  "nvidia.com/gpu",
+					ResourceMemoryName: "nvidia.com/gpumem",
+					ResourceCoreName:   "nvidia.com/gpucores",
+					RequestName:        "gpu",
+					DeviceType:         constants.NvidiaDeviceType,
+				},
+			}
+			resp := a.Handle(context.Background(), req)
+			require.True(t, resp.Allowed)
+			assert.NotEmpty(t, resp.Patches)
+			assert.Len(t, resp.Warnings, tc.wantWarnings)
+		})
+	}
+}

@@ -18,9 +18,12 @@ package dra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -29,6 +32,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -391,4 +396,90 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
 		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
 	}
+}
+
+func TestHandleWarnsOnExtendedResourceConflict(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "c",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("1"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: "default",
+		Object:    runtime.RawExtension{Raw: raw},
+	}}
+
+	for _, tc := range []struct {
+		name         string
+		extendedName string
+		wantWarnings int
+	}{
+		{"conflict", "nvidia.com/gpu", 1},
+		{"other resource", "example.com/gpu", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dc := &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "gpu"},
+				Spec:       resourceapi.DeviceClassSpec{ExtendedResourceName: &tc.extendedName},
+			}
+			a := &MutatingAdmission{
+				Decoder:      admission.NewDecoder(sch),
+				Client:       fake.NewClientBuilder().WithScheme(sch).WithObjects(dc).Build(),
+				DeviceConfig: defaultNvidiaDeviceConfig(),
+			}
+			resp := a.Handle(context.Background(), req)
+			require.True(t, resp.Allowed)
+			assert.NotEmpty(t, resp.Patches)
+			assert.Len(t, resp.Warnings, tc.wantWarnings)
+		})
+	}
+}
+
+func TestHandleDoesNotBlockWhenDeviceClassListHangs(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "c",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("1"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: "default",
+		Object:    runtime.RawExtension{Raw: raw},
+	}}
+	// Like an informer that never syncs: List returns only when ctx is done.
+	hang := interceptor.Funcs{List: func(ctx context.Context, _ client.WithWatch, _ client.ObjectList, _ ...client.ListOption) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	a := &MutatingAdmission{
+		Decoder:      admission.NewDecoder(sch),
+		Client:       fake.NewClientBuilder().WithScheme(sch).WithInterceptorFuncs(hang).Build(),
+		DeviceConfig: defaultNvidiaDeviceConfig(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	resp := a.Handle(ctx, req)
+	assert.Less(t, time.Since(start), 4*time.Second)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches)
+	assert.Empty(t, resp.Warnings)
 }

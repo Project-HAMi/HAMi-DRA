@@ -34,6 +34,7 @@ import (
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/webhook/dra"
 )
 
 // MutatingAdmission mutates API request if necessary.
@@ -56,6 +57,14 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	}
 
 	klog.V(5).Infof("Mutating volcano job(%s/%s) for request: %s", req.Namespace, job.Name, req.Operation)
+	var containers []corev1.Container
+	for _, task := range job.Spec.Tasks {
+		containers = append(containers, task.Template.Spec.Containers...)
+	}
+	warnings := dra.ExtendedResourceWarnings(ctx, a.Client, a.configs(), containers)
+	for _, w := range warnings {
+		klog.Warningf("Job(%s/%s): %s", req.Namespace, job.Name, w)
+	}
 	needPatch := false
 	rctNameList := []string{}
 
@@ -92,7 +101,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		a.deleteResourceClaimTemplates(ctx, job.Namespace, rctNameList)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
 }
 
 // deleteResourceClaimTemplates removes templates created earlier in the same
