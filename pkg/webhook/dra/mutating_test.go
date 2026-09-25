@@ -18,9 +18,11 @@ package dra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -29,6 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -391,4 +394,39 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
 		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
 	}
+}
+
+func TestHandleDryRunDoesNotCreateClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "c",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("1"),
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	dryRun := true
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: "default",
+		Object:    runtime.RawExtension{Raw: raw},
+		DryRun:    &dryRun,
+	}}
+	a := &MutatingAdmission{
+		Decoder:      admission.NewDecoder(sch),
+		Client:       fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfig: defaultNvidiaDeviceConfig(),
+	}
+
+	resp := a.Handle(context.Background(), req)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches, "dry run should still show the mutated pod")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, a.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items)
 }

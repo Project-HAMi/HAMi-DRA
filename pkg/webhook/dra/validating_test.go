@@ -173,3 +173,24 @@ func TestGetResourceClaimName(t *testing.T) {
 
 	assert.Equal(t, []string{"default-pod-gpu"}, names, "only entries with a resolved ResourceClaimName should be returned")
 }
+
+func TestValidatingHandle_DryRunKeepsClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	existing := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "default-p-gpu", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"}},
+		Spec:       corev1.PodSpec{ResourceClaims: []corev1.PodResourceClaim{podResourceClaim("gpu", "default-p-gpu")}},
+	}
+	req := newDeleteRequest(t, pod)
+	dryRun := true
+	req.DryRun = &dryRun
+
+	resp := (&ValidatingAdmission{Client: fakeClient}).Handle(context.Background(), req)
+	assert.True(t, resp.Allowed)
+	assert.NoError(t, fakeClient.Get(context.Background(),
+		client.ObjectKey{Namespace: "default", Name: "default-p-gpu"}, &resourceapi.ResourceClaim{}))
+}

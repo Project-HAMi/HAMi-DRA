@@ -50,6 +50,12 @@ var _ admission.Handler = &MutatingAdmission{}
 
 // Handle yields a response to an AdmissionRequest.
 func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
+	if req.DryRun != nil && *req.DryRun {
+		// Send the claim writes as dry run too, so a dry run changes nothing.
+		dry := *a
+		dry.Client = client.NewDryRunClient(a.Client)
+		a = &dry
+	}
 	pod := &corev1.Pod{}
 	err := a.Decoder.Decode(req, pod)
 	if err != nil {
