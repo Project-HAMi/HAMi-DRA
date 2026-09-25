@@ -42,6 +42,12 @@ var _ admission.Handler = &ValidatingAdmission{}
 
 // Handle deletes the ResourceClaim when a DRA-managed Pod is deleted.
 func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request) admission.Response {
+	if req.DryRun != nil && *req.DryRun {
+		// Send the claim writes as dry run too, so a dry run changes nothing.
+		dry := *v
+		dry.Client = client.NewDryRunClient(v.Client)
+		v = &dry
+	}
 	pod := &corev1.Pod{}
 
 	if err := json.Unmarshal(req.OldObject.Raw, pod); err != nil {

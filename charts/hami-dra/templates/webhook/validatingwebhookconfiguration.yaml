@@ -29,7 +29,7 @@ webhooks:
         resources:
           - pods
         scope: '*'
-    sideEffects: None
+    sideEffects: NoneOnDryRun
     timeoutSeconds: 10
     failurePolicy: Ignore
 {{- if .Values.webhook.config.scope.enabled }}
@@ -60,7 +60,7 @@ webhooks:
         resources:
           - jobs
         scope: '*'
-    sideEffects: None
+    sideEffects: NoneOnDryRun
     timeoutSeconds: 10
     failurePolicy: Ignore
 {{- if .Values.webhook.config.scope.enabled }}
