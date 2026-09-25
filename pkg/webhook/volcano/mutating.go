@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -124,9 +125,14 @@ func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 
 func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) ([]string, error) {
 	var rctNames []string
+	// Task names repeat across jobs, so the template name must include the job.
+	jobName := job.Name
+	if jobName == "" {
+		jobName = rand.String(5)
+	}
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, task.Name)
+		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name)
 		rctNames = append(rctNames, names...)
 		if err != nil {
 			return rctNames, err

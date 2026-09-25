@@ -196,7 +196,7 @@ func TestHandleTaskProcessesAllContainers(t *testing.T) {
 
 	rctNames, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"default-multi-gpu-task-gpu-one", "default-multi-gpu-task-gpu-two"}, rctNames)
+	assert.Equal(t, []string{"default-multi-multi-gpu-task-gpu-one", "default-multi-multi-gpu-task-gpu-two"}, rctNames)
 
 	for _, i := range []int{0, 2} {
 		container := task.Template.Spec.Containers[i]
@@ -215,7 +215,7 @@ func TestHandleCleansUpTemplatesOnPartialFailure(t *testing.T) {
 	// A template with the second container's name already exists, so its
 	// Create fails after the first container's template was created.
 	existing := &resourceapi.ResourceClaimTemplate{
-		ObjectMeta: metav1.ObjectMeta{Name: "default-leak-task-gpu-two", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "default-leak-leak-task-gpu-two", Namespace: "default"},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
 
@@ -262,7 +262,7 @@ func TestHandleCleansUpTemplatesOnPartialFailure(t *testing.T) {
 	require.False(t, resp.Allowed, "request should fail when a template cannot be created")
 
 	err = fakeClient.Get(context.Background(),
-		client.ObjectKey{Namespace: "default", Name: "default-leak-task-gpu-one"},
+		client.ObjectKey{Namespace: "default", Name: "default-leak-leak-task-gpu-one"},
 		&resourceapi.ResourceClaimTemplate{})
 	assert.True(t, apierrors.IsNotFound(err), "template created before the failure should be deleted, got: %v", err)
 }
@@ -286,4 +286,32 @@ func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,
 		exactly.Selectors[0].CEL.Expression,
 	)
+}
+
+func TestHandleTaskSameTaskNameInTwoJobs(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client: fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName: "nvidia.com/gpu",
+			RequestName:       "gpu",
+		},
+	}
+	newTask := func() *vcv1alpha1.TaskSpec {
+		return &vcv1alpha1.TaskSpec{Name: "worker", Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "main", Resources: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")},
+			}}},
+		}}}
+	}
+
+	var got []string
+	for _, jobName := range []string{"job-a", "job-b"} {
+		job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "default"}}
+		names, err := admission.handleTask(context.Background(), newTask(), job)
+		require.NoError(t, err)
+		got = append(got, names...)
+	}
+	assert.Equal(t, []string{"default-job-a-worker-main", "default-job-b-worker-main"}, got)
 }
