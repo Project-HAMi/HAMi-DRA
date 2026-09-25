@@ -18,9 +18,11 @@ package dra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -29,6 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -391,4 +394,29 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
 		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
 	}
+}
+
+func TestHandleUpdateStripsReappliedResources(t *testing.T) {
+	a := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
+	gpu := corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1"), "nvidia.com/gpumem": resource.MustParse("1000")}
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Name:      "c",
+		Resources: corev1.ResourceRequirements{Limits: gpu.DeepCopy(), Requests: gpu.DeepCopy()},
+	}}}}
+
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: runtime.RawExtension{Raw: raw}}}
+	resp := a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Limits)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Requests)
+
+	raw, err = json.Marshal(pod)
+	require.NoError(t, err)
+	req.Object.Raw = raw
+	resp = a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.Empty(t, resp.Patches, "nothing to strip on a plain update")
 }
