@@ -17,6 +17,8 @@ limitations under the License.
 package config
 
 import (
+	"strings"
+
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 )
 
@@ -46,4 +48,23 @@ func (c *Config) DeviceTypes() DeviceTypeTable {
 		table.AscendCommonWords[chip.ChipName] = chip.CommonWord
 	}
 	return table
+}
+
+// DeviceType maps a product name to its device type: "Tesla P4" -> "NVIDIA-Tesla P4"
+// for NVIDIA, "310P3" -> "Ascend310P" for Ascend. Others currently keep their product name.
+func (t DeviceTypeTable) DeviceType(driver, productName string) string {
+	switch {
+	case productName == "":
+		return ""
+	case driver == t.NvidiaDriver:
+		if strings.HasPrefix(productName, NvidiaGPUDevice) {
+			return productName
+		}
+		return NvidiaGPUDevice + "-" + productName
+	case driver == t.AscendDriver:
+		if word, ok := t.AscendCommonWords[productName]; ok {
+			return word
+		}
+	}
+	return productName
 }

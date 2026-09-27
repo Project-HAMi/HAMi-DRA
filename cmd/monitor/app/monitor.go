@@ -140,7 +140,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	customRegistry := prometheus.NewRegistry()
 
 	// Create metrics collector and register to registry
-	collector := metrics.NewCollector(cacheInstance, opts.LegacyMetrics)
+	collector := metrics.NewCollector(cacheInstance, opts.LegacyMetrics, deviceTypes)
 	klog.Info("Registering metrics collector to registry")
 	customRegistry.MustRegister(collector)
 
