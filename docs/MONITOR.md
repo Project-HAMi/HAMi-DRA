@@ -116,12 +116,12 @@ The monitor exposes the following Prometheus metrics:
 
 | Metrics | Description | Example |
 | --- | --- | --- |
-| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1 |
-| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 2.5769803776e+10 |
-| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 0.3 |
-| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1.073741824e+10 |
-| hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 0.3 |
-| hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 1.073741824e+10 |
+| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1 |
+| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 2.5769803776e+10 |
+| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 0.3 |
+| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1.073741824e+10 |
+| hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 0.3 |
+| hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 1.073741824e+10 |
 
 ### Legacy metrics
 
@@ -188,6 +188,16 @@ scrape_configs:
     static_configs:
       - targets:
         - 'hami-dra-monitor.<namespace>.svc.cluster.local:8080'
+```
+
+### Label Conflicts
+
+The per-pod metrics come with their own `namespace` and `pod` labels. If your scrape config adds `namespace` or `pod` to the target as well (a Prometheus Operator `ServiceMonitor` does this by default), the two clash and Prometheus renames ours to `exported_namespace` and `exported_pod`. To keep the original names, set `honor_labels: true` on the scrape job, or `honorLabels: true` on the `ServiceMonitor` endpoint:
+
+```yaml
+scrape_configs:
+  - job_name: 'hami-dra-monitor'
+    honor_labels: true
 ```
 
 ## Resource Requirements
