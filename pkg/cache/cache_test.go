@@ -95,6 +95,7 @@ func TestCache_GetDevices(t *testing.T) {
 		Devices: []*NodeDevice{
 			{
 				Name:         "gpu0",
+				Driver:       "hami-core-gpu.project-hami.io",
 				UUID:         "test-uuid-1",
 				Architecture: "sm_80",
 				Brand:        "NVIDIA",
@@ -128,6 +129,9 @@ func TestCache_GetDevices(t *testing.T) {
 	}
 	if device.CoresUsed != 50 {
 		t.Errorf("Expected CoresUsed 50, got %d", device.CoresUsed)
+	}
+	if device.Driver != "hami-core-gpu.project-hami.io" {
+		t.Errorf("Expected driver 'hami-core-gpu.project-hami.io', got '%s'", device.Driver)
 	}
 
 	// Verify GetDevices returns a copy (modifying returned devices shouldn't affect original)
@@ -175,6 +179,20 @@ func TestCache_onAddSlice(t *testing.T) {
 	}
 	if device.UUID != "test-uuid-1" {
 		t.Errorf("Expected UUID 'test-uuid-1', got '%s'", device.UUID)
+	}
+}
+
+func TestNodeDevices_ParseNodeDeviceDriver(t *testing.T) {
+	slice := createTestResourceSlice("test-slice", "test-node", "gpu0", "test-uuid-1")
+	slice.Spec.Driver = "hami-core-gpu.project-hami.io"
+
+	devices := NewNodeDevices().ParseNodeDevice(slice)
+
+	if len(devices) != 1 {
+		t.Fatalf("Expected 1 device, got %d", len(devices))
+	}
+	if devices[0].Driver != "hami-core-gpu.project-hami.io" {
+		t.Errorf("Expected driver 'hami-core-gpu.project-hami.io', got '%s'", devices[0].Driver)
 	}
 }
 
