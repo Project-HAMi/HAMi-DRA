@@ -75,3 +75,25 @@ func TestDeviceTypesSkipsIncompleteChips(t *testing.T) {
 	assert.Equal(t, "Ascend310P", table.AscendCommonWords["310P3"])
 	assert.Equal(t, "Ascend910B3", table.AscendCommonWords["910B3"])
 }
+
+func TestDeviceTypeTableDeviceType(t *testing.T) {
+	table := (&Config{}).DeviceTypes()
+	tests := []struct {
+		name        string
+		driver      string
+		productName string
+		want        string
+	}{
+		{name: "nvidia without prefix", driver: "hami-core-gpu.project-hami.io", productName: "Tesla P4", want: "NVIDIA-Tesla P4"},
+		{name: "nvidia with prefix", driver: "hami-core-gpu.project-hami.io", productName: "NVIDIA A30", want: "NVIDIA A30"},
+		{name: "ascend known chip", driver: "ascend.project-hami.io", productName: "310P3", want: "Ascend310P"},
+		{name: "ascend unknown chip", driver: "ascend.project-hami.io", productName: "test-chip", want: "test-chip"},
+		{name: "other vendor", driver: "dra.hygon.com", productName: "K100_AI", want: "K100_AI"},
+		{name: "no product name", driver: "hami-core-gpu.project-hami.io", productName: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, table.DeviceType(tt.driver, tt.productName))
+		})
+	}
+}
