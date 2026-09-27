@@ -89,7 +89,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryTotal),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, deviceType,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_limit_ratio
@@ -98,7 +98,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresTotal)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, deviceType,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_memory_allocated_bytes
@@ -107,7 +107,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryUsed),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, deviceType,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_allocated_ratio
@@ -116,7 +116,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresUsed)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, deviceType,
+				device.Name, deviceType,
 			)
 
 			if !c.legacy {
@@ -182,7 +182,6 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 				klog.Warningf("Device %s not found on node %s", result.DeviceName, claim.NodeName)
 				continue
 			}
-			deviceType := c.deviceTypes.DeviceType(device.Driver, device.ProductName)
 
 			for _, podName := range claim.UsedBy {
 				ch <- prometheus.MustNewConstMetric(
@@ -191,10 +190,6 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Cores)/coreScale,
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					deviceType,
 					result.Namespace,
 					podName,
 				)
@@ -204,10 +199,6 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Memory),
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					deviceType,
 					result.Namespace,
 					podName,
 				)
