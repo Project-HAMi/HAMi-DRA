@@ -42,6 +42,8 @@ spec:
             {{- if not .Values.monitor.legacyMetrics }}
             - --legacy-metrics=false
             {{- end }}
+            {{- /* --device-config-file is not passed: the monitor reads /device-config.yaml by default,
+            so older images that lack the flag still start. */}}
           ports:
             - containerPort: 8080
               name: metrics
@@ -53,6 +55,10 @@ spec:
           resources:
             {{- toYaml .Values.monitor.resources | nindent 12 }}
           {{- end }}
+          volumeMounts:
+            - name: device-config
+              mountPath: /device-config.yaml
+              subPath: device-config.yaml
           livenessProbe:
             httpGet:
               path: /healthz
@@ -69,5 +75,9 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+      volumes:
+        - name: device-config
+          configMap:
+            name: {{ include "hami.dra.webhook.fullname" . }}-device-config
 {{- end }}
 
