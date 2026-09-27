@@ -107,6 +107,14 @@ func Run(ctx context.Context, opts *options.Options) error {
 	klog.Infof("hami-dra-monitor version: %s", version.Get())
 	klog.InfoS("Golang settings", "GOGC", os.Getenv("GOGC"), "GOMAXPROCS", os.Getenv("GOMAXPROCS"), "GOTRACEBACK", os.Getenv("GOTRACEBACK"))
 
+	deviceTypes, err := loadDeviceTypeTable(opts.DeviceConfigFile)
+	if err != nil {
+		klog.Errorf("Failed to load device config: %v", err)
+		return err
+	}
+	klog.InfoS("Loaded device type table", "nvidiaDriver", deviceTypes.NvidiaDriver,
+		"ascendDriver", deviceTypes.AscendDriver, "ascendChips", len(deviceTypes.AscendCommonWords))
+
 	// Initialize cache
 	klog.Info("Initializing cache...")
 	client, err := utils.NewClientWithRateLimit(opts.KubeAPIQPS, opts.KubeAPIBurst)
