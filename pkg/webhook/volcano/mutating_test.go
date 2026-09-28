@@ -287,3 +287,33 @@ func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 		exactly.Selectors[0].CEL.Expression,
 	)
 }
+
+func TestHandleDryRunDoesNotCreateTemplates(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	jobRaw, err := json.Marshal(quickstartJob)
+	require.NoError(t, err)
+	dryRun := true
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: quickstartJob.Namespace,
+		Object:    runtime.RawExtension{Raw: jobRaw},
+		DryRun:    &dryRun,
+	}}
+	a := &MutatingAdmission{
+		Decoder: admission.NewDecoder(sch),
+		Client:  fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName: "nvidia.com/gpu",
+			RequestName:       "gpu",
+		},
+	}
+
+	resp := a.Handle(context.Background(), req)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches, "dry run should still show the mutated job")
+	templates := &resourceapi.ResourceClaimTemplateList{}
+	require.NoError(t, a.Client.List(context.Background(), templates))
+	assert.Empty(t, templates.Items)
+}
