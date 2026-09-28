@@ -60,7 +60,7 @@ webhooks:
         resources:
           - jobs
         scope: '*'
-    sideEffects: None
+    sideEffects: NoneOnDryRun
     timeoutSeconds: 10
     failurePolicy: {{ .Values.webhook.config.volcano.failurePolicy | default "Fail" }}
 {{- if .Values.webhook.config.scope.enabled }}

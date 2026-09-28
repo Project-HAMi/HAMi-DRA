@@ -381,7 +381,7 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		}},
 	}
 
-	names, err := admission.handleContainer(context.Background(), container, pod, nil, false, false)
+	names, err := admission.handleContainer(context.Background(), container, pod, nil, false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{
 		"default-mixed-workload-nvidia",
@@ -516,6 +516,7 @@ func TestHandleDryRunSkipsPersistentWrites(t *testing.T) {
 			req.DryRun = &dryRun
 			resp := a.Handle(context.Background(), req)
 			require.True(t, resp.Allowed, "unexpected rejection: %v", resp.Result)
+			assert.NotEmpty(t, resp.Patches, "dry run should still show the mutated pod")
 
 			const name = "default-trainer-worker-nvidia"
 			podClaims := patchedPodResourceClaims(t, resp)
