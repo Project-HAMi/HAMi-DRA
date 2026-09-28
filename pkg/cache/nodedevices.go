@@ -45,6 +45,7 @@ type ClaimsCache struct {
 
 type NodeDevice struct {
 	Name         string
+	Driver       string
 	UUID         string
 	Architecture string
 	Brand        string
@@ -120,6 +121,7 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 
 		nodeDevices = append(nodeDevices, &NodeDevice{
 			Name:         device.Name,
+			Driver:       slice.Spec.Driver,
 			UUID:         uuid,
 			Architecture: architecture,
 			Brand:        brand,
@@ -150,6 +152,7 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 	for i, device := range nodeInfo.Devices {
 		deviceCopies[i] = &NodeDevice{
 			Name:         device.Name,
+			Driver:       device.Driver,
 			UUID:         device.UUID,
 			Architecture: device.Architecture,
 			Brand:        device.Brand,

@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/cache"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog/v2"
 )
@@ -29,14 +30,16 @@ import (
 const coreScale = 100
 
 type Collector struct {
-	cache  *cache.Cache
-	legacy bool
+	cache       *cache.Cache
+	legacy      bool
+	deviceTypes config.DeviceTypeTable
 }
 
-func NewCollector(cache *cache.Cache, legacy bool) *Collector {
+func NewCollector(cache *cache.Cache, legacy bool, deviceTypes config.DeviceTypeTable) *Collector {
 	return &Collector{
-		cache:  cache,
-		legacy: legacy,
+		cache:       cache,
+		legacy:      legacy,
+		deviceTypes: deviceTypes,
 	}
 }
 
@@ -78,6 +81,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 
 		for idx, device := range devices {
 			deviceIdx := strconv.Itoa(idx)
+			deviceType := c.deviceTypes.DeviceType(device.Driver, device.ProductName)
 
 			// hami_dra_gpu_memory_limit_bytes
 			ch <- prometheus.MustNewConstMetric(
@@ -85,7 +89,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryTotal),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_limit_ratio
@@ -94,7 +98,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresTotal)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_memory_allocated_bytes
@@ -103,7 +107,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryUsed),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_allocated_ratio
@@ -112,7 +116,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresUsed)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			if !c.legacy {
@@ -186,10 +190,6 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Cores)/coreScale,
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
 					result.Namespace,
 					podName,
 				)
@@ -199,10 +199,6 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 					float64(result.Memory),
 					claim.NodeName,
 					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
 					result.Namespace,
 					podName,
 				)
