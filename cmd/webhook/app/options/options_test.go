@@ -33,3 +33,15 @@ func TestDeviceVendorsFlag(t *testing.T) {
 	assert.Equal(t, []string{"nvidia", "hygon", "ascend"}, opts.DeviceVendors)
 	assert.Nil(t, flags.Lookup("device-vendor"))
 }
+
+func TestResourceClaimTemplateFlag(t *testing.T) {
+	opts := NewOptions()
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.AddFlags(flags)
+
+	require.NoError(t, flags.Parse(nil))
+	assert.False(t, opts.ResourceClaimTemplate, "template mode must be opt-in")
+
+	require.NoError(t, flags.Parse([]string{"--resource-claim-template"}))
+	assert.True(t, opts.ResourceClaimTemplate)
+}

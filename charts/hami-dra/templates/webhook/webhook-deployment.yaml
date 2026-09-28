@@ -39,6 +39,9 @@ spec:
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8000
             - --device-config-file=/device-config.yaml
+            {{- if .Values.webhook.config.resourceClaimTemplate }}
+            - --resource-claim-template=true
+            {{- end }}
           ports:
             - containerPort: 8443
               name: webhook

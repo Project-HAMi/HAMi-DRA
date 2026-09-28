@@ -65,6 +65,9 @@ type Options struct {
 	DeviceConfigFile string
 	// DeviceVendors selects device sections in device-config.yaml.
 	DeviceVendors []string
+	// ResourceClaimTemplate converts device-plugin resources into ResourceClaimTemplate
+	// references instead of creating a ResourceClaim directly.
+	ResourceClaimTemplate bool
 }
 
 // NewOptions builds an empty options.
@@ -89,6 +92,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", ":8000", "The TCP address that the controller should bind to for serving health probes(e.g. 127.0.0.1:8000, :8000)")
 	flags.StringVar(&o.DeviceConfigFile, "device-config-file", "device-config.yaml", "The path to the device config file.")
 	flags.StringSliceVar(&o.DeviceVendors, "device-vendors", nil, "Device vendors for DRA conversion (nvidia, hygon, ascend). Overrides vendors in device-config.yaml when set.")
+	flags.BoolVar(&o.ResourceClaimTemplate, "resource-claim-template", false, "Create a ResourceClaimTemplate instead of a ResourceClaim for every converted Pod. Kubernetes generates the ResourceClaim from the template.")
 }
 
 // Validate validates the options and returns aggregated errors.

@@ -79,6 +79,18 @@ deviceVendors:
 The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
 The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend`.
 
+### ResourceClaimTemplate
+
+By default the webhook creates a `ResourceClaim` and points the Pod at it. Set the following to create a `ResourceClaimTemplate` instead, for every converted Pod. Kubernetes generates the `ResourceClaim` from that template:
+
+```yaml
+webhook:
+  config:
+    resourceClaimTemplate: true
+```
+
+Kueue can admit this form. It rejects Pods that reference a `ResourceClaim` directly. Kueue must map the HAMi `DeviceClass` in its `deviceClassMappings` configuration, otherwise the Workload stays inadmissible. Workloads for which Kueue builds the Workload from the parent object before the Pod exists, such as a `batch/v1` Job, are not covered yet.
+
 ### Monitor Component
 
 The monitor component is an optional feature that collects and exposes GPU resource metrics via Prometheus. It is enabled by default.
