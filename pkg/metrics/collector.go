@@ -163,7 +163,81 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 	klog.V(5).Infof("Collected metrics for %d nodes", len(nodeNames))
 }
 
+// podDevice is one pod's allocation on one device, summed over its claims.
+type podDevice struct {
+	node, namespace, pod string
+	device               *cache.NodeDevice
+	deviceIdx            string
+	cores, memory        int64
+}
+
+type podDeviceKey struct {
+	node, deviceName, namespace, pod string
+}
+
 func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
+	for _, pd := range c.podDevices() {
+		if pd.device.UUID == "" {
+			klog.Warningf("Device %s on node %s has no UUID, skipping hami_dra_vgpu_* metrics for pod %s/%s",
+				pd.device.Name, pd.node, pd.namespace, pd.pod)
+		} else {
+			ch <- prometheus.MustNewConstMetric(
+				podvGPUCoreAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(pd.cores)/coreScale,
+				pd.node,
+				pd.device.UUID,
+				pd.namespace,
+				pd.pod,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				podvGPUMemoryAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(pd.memory),
+				pd.node,
+				pd.device.UUID,
+				pd.namespace,
+				pd.pod,
+			)
+		}
+
+		if !c.legacy {
+			continue
+		}
+
+		ch <- prometheus.MustNewConstMetric(
+			legacyPodvGPUCoreAllocatedDesc,
+			prometheus.GaugeValue,
+			float64(pd.cores),
+			pd.node,
+			pd.device.UUID,
+			pd.deviceIdx,
+			pd.device.Name,
+			pd.device.Brand,
+			pd.device.ProductName,
+			pd.namespace,
+			pd.pod,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			legacyPodvGPUMemoryAllocatedDesc,
+			prometheus.GaugeValue,
+			float64(pd.memory)/1024/1024,
+			pd.node,
+			pd.device.UUID,
+			pd.deviceIdx,
+			pd.device.Name,
+			pd.device.Brand,
+			pd.device.ProductName,
+			pd.namespace,
+			pd.pod,
+		)
+	}
+}
+
+// podDevices sums each pod's claims per device. A pod can hold several
+// claims on one GPU, and a scrape fails if a series appears twice.
+func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
+	sums := make(map[podDeviceKey]*podDevice)
 	claims := c.cache.NodeDevices.GetAllClaims()
 
 	for _, claim := range claims {
@@ -184,56 +258,22 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 			}
 
 			for _, podName := range claim.UsedBy {
-				ch <- prometheus.MustNewConstMetric(
-					podvGPUCoreAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Cores)/coreScale,
-					claim.NodeName,
-					device.UUID,
-					result.Namespace,
-					podName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					podvGPUMemoryAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Memory),
-					claim.NodeName,
-					device.UUID,
-					result.Namespace,
-					podName,
-				)
-
-				if !c.legacy {
-					continue
+				key := podDeviceKey{claim.NodeName, device.Name, result.Namespace, podName}
+				pd, ok := sums[key]
+				if !ok {
+					pd = &podDevice{
+						node:      claim.NodeName,
+						namespace: result.Namespace,
+						pod:       podName,
+						device:    device,
+						deviceIdx: deviceIdx,
+					}
+					sums[key] = pd
 				}
-
-				ch <- prometheus.MustNewConstMetric(
-					legacyPodvGPUCoreAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Cores),
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					legacyPodvGPUMemoryAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Memory)/1024/1024,
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
+				pd.cores += result.Cores
+				pd.memory += result.Memory
 			}
 		}
 	}
+	return sums
 }
