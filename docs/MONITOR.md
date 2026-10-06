@@ -138,6 +138,21 @@ The old metric names are still exported while `--legacy-metrics` is enabled (the
 
 Legacy metrics keep their original units: memory in MB and cores on a 0-100 scale.
 
+Legacy metrics also keep their old label names. The new metrics rename them:
+
+| Old label | New label |
+| --- | --- |
+| `nodeid` | `node` |
+| `deviceuuid` | `device_uuid` |
+| `deviceidx` | `device_index` |
+| `devicename` | `device_name` |
+| `deviceproductname` | `device_type` |
+| `devicebrand` | removed |
+| `podnamespace` | `namespace` |
+| `podname` | `pod` |
+
+The per-pod metrics (`hami_dra_vgpu_*`) keep `node`, `device_uuid`, `namespace` and `pod`.
+
 ## Endpoints
 
 ### Metrics Endpoint
