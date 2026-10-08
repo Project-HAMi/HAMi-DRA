@@ -103,6 +103,10 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 		if uuidAttr, ok := device.Attributes[constants.DeviceAttributeUUID]; ok && uuidAttr.StringValue != nil {
 			uuid = *uuidAttr.StringValue
 		}
+		if uuid == "" {
+			klog.Warningf("Device UUID is empty, omitting pod metric collection for device=%s, resourceSlice=%s",
+				device.Name, slice.Name)
+		}
 
 		architecture := ""
 		if archAttr, ok := device.Attributes[constants.DeviceAttributeArchitecture]; ok && archAttr.StringValue != nil {

@@ -177,10 +177,7 @@ type podDeviceKey struct {
 
 func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 	for _, pd := range c.podDevices() {
-		if pd.device.UUID == "" {
-			klog.Warningf("Device %s on node %s has no UUID, skipping hami_dra_vgpu_* metrics for pod %s/%s",
-				pd.device.Name, pd.node, pd.namespace, pd.pod)
-		} else {
+		if pd.device.UUID != "" {
 			ch <- prometheus.MustNewConstMetric(
 				podvGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
