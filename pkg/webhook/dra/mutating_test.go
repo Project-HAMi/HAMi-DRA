@@ -629,3 +629,66 @@ func TestHandleResourceClaimTemplateRollsBackOnFailure(t *testing.T) {
 		client.ObjectKey{Namespace: "default", Name: "default-trainer-worker-hygon"}, &resourceapi.ResourceClaimTemplate{}),
 		"pre-existing template must not be deleted by the rollback")
 }
+
+func TestHandleContainerAMD(t *testing.T) {
+	deviceConfigs, err := (&config.Config{Amd: config.AmdConfig{ReferenceComputeUnits: 304}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client:        fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfigs: deviceConfigs,
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "amd", Namespace: "default",
+		Annotations: map[string]string{
+			constants.AmdUseTypeAnnotation:   "AMD Instinct MI300X",
+			constants.AmdNoUseUUIDAnnotation: "GPU-bad",
+		},
+	}}
+	container := &corev1.Container{
+		Name: "rocm",
+		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			corev1.ResourceName("amd.com/gpu"):      resource.MustParse("2"),
+			corev1.ResourceName("amd.com/gpumem"):   resource.MustParse("4096"),
+			corev1.ResourceName("amd.com/gpucores"): resource.MustParse("25"),
+		}},
+	}
+
+	names, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{"default-amd-rocm-amd"}, names)
+	assert.Empty(t, container.Resources.Limits)
+
+	claim := &resourceapi.ResourceClaim{}
+	require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+	exactly := claim.Spec.Devices.Requests[0].Exactly
+	assert.Equal(t, "gpu.amd.com", exactly.DeviceClassName)
+	assert.Equal(t, int64(2), exactly.Count)
+	mem, cus := exactly.Capacity.Requests["memory"], exactly.Capacity.Requests["computeUnits"]
+	assert.Equal(t, int64(4096)*1024*1024, mem.Value())
+	assert.Equal(t, int64(76), cus.Value())
+	_, hasCores := exactly.Capacity.Requests["cores"]
+	assert.False(t, hasCores, "the AMD driver has no cores capacity")
+	require.Len(t, exactly.Selectors, 3)
+	assert.Equal(t, `device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"`, exactly.Selectors[0].CEL.Expression)
+	assert.Equal(t, `!(device.attributes["gpu.amd.com"].uuid in ["GPU-bad"])`, exactly.Selectors[1].CEL.Expression)
+	assert.Equal(t, `device.attributes["gpu.amd.com"].productName in ["AMD Instinct MI300X"]`, exactly.Selectors[2].CEL.Expression)
+}
+
+func TestHandleContainerAMDNeedsReferenceComputeUnitsForCores(t *testing.T) {
+	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).Build(), DeviceConfigs: deviceConfigs}
+	container := &corev1.Container{Name: "rocm", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+		corev1.ResourceName("amd.com/gpu"):      resource.MustParse("1"),
+		corev1.ResourceName("amd.com/gpucores"): resource.MustParse("25"),
+	}}}
+	_, err = admission.handleContainer(context.Background(), container, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}, nil, false)
+	assert.ErrorContains(t, err, "referenceComputeUnits")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, admission.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "a failed conversion must not leave a claim behind")
+}

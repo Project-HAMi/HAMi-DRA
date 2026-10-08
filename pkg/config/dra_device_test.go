@@ -168,3 +168,45 @@ func TestDRADevicesValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDRADeviceAMDDefaults(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorAMD})
+	assert.NoError(t, err)
+	cfg := cfgs[0]
+	assert.Equal(t, "amd.com/gpu", cfg.ResourceCountName)
+	assert.Equal(t, "amd.com/gpumem", cfg.ResourceMemoryName)
+	assert.Equal(t, "amd.com/gpucores", cfg.ResourceCoreName)
+	assert.Equal(t, "gpu.amd.com", cfg.EffectiveDeviceClassName())
+	assert.Equal(t, "gpu.amd.com", cfg.EffectiveDraDriverName())
+	assert.Equal(t, "gpu", cfg.RequestName)
+	// the AMD driver names its compute capacity computeUnits, not cores
+	assert.Equal(t, "computeUnits", cfg.EffectiveCoreCapacityName())
+	assert.Equal(t, "amd", cfg.ClaimNameSuffix())
+	assert.Equal(t, `device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"`, cfg.TypeSelectorExpression())
+	assert.Equal(t, "amd.com/use-gpu-uuid", cfg.UseUUIDAnnotation)
+	assert.Equal(t, "amd.com/nouse-gputype", cfg.NoUseTypeAnnotation)
+}
+
+func TestConvertCoresAMD(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorAMD})
+	assert.NoError(t, err)
+	_, err = cfgs[0].ConvertCores(*resource.NewQuantity(25, resource.DecimalSI))
+	assert.ErrorContains(t, err, "amd.com/gpucores")
+
+	cfgs, err = (&Config{Amd: AmdConfig{ReferenceComputeUnits: 304}}).DRADevices([]string{VendorAMD})
+	assert.NoError(t, err)
+	converted, err := cfgs[0].ConvertCores(*resource.NewQuantity(25, resource.DecimalSI))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(76), converted.Value()) // 25% of an MI300X's 304 CUs
+	rounded, err := cfgs[0].ConvertCores(*resource.NewQuantity(1, resource.DecimalSI))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), rounded.Value()) // rounds up
+}
+
+func TestDRADeviceAMDWithOtherVendors(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorNvidia, VendorAMD, VendorHygon})
+	assert.NoError(t, err)
+	assert.Equal(t, VendorAMD, cfgs[1].Vendor)
+	_, err = (&Config{Amd: AmdConfig{ResourceCountName: "nvidia.com/gpu"}}).DRADevices([]string{VendorNvidia, VendorAMD})
+	assert.ErrorContains(t, err, "configured by both")
+}

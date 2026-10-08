@@ -237,6 +237,14 @@ data:
       draDriverName: {{ include "hami.dra.hcu.driverName" . }}
       requestName: hcu
       referenceComputeUnits: {{ .Values.hcuReferenceComputeUnits }}
+    amd:
+      resourceCountName: {{ .Values.amdResourceName }}
+      resourceMemoryName: {{ .Values.amdResourceMem }}
+      resourceCoreName: {{ .Values.amdResourceCores }}
+      deviceClassName: {{ .Values.amdDeviceClassName }}
+      draDriverName: {{ .Values.amdDraDriverName }}
+      requestName: gpu
+      referenceComputeUnits: {{ .Values.amdReferenceComputeUnits }}
     ascend:
       deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.ascend.driverName" . }}
@@ -302,8 +310,6 @@ data:
     awsneuron:
       resourceCountName: "aws.amazon.com/neuron"
       resourceCoreName: "aws.amazon.com/neuroncore"
-    amd:
-      resourceCountName: "amd.com/gpu"
     vnpus:
     - chipName: 910A
       commonWord: Ascend910A
