@@ -123,6 +123,8 @@ The monitor exposes the following Prometheus metrics:
 | hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 0.3 |
 | hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 1.073741824e+10 |
 
+The `hami_dra_*_core_*_ratio` metrics use a 0-1 scale, while HAMi's core ratio metrics, such as `hami_gpu_core_allocated_ratio`, use 0-100.
+
 ### Legacy metrics
 
 The old metric names are still exported while `--legacy-metrics` is enabled (the default); set `monitor.legacyMetrics: false` in the Helm values to export only the new names.
