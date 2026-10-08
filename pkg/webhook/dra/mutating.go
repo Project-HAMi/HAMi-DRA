@@ -126,12 +126,15 @@ func (a *MutatingAdmission) handleUpdate(req admission.Request, pod *corev1.Pod)
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
 }
 
-// stripConverted removes the resources this webhook converts to claims and
-// reports whether any were found.
+// stripConverted removes the resources this webhook converts to claims from
+// containers that already hold claims, and reports whether any were found.
 func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfig) bool {
 	found := false
 	for i := range containers {
 		res := &containers[i].Resources
+		if len(res.Claims) == 0 {
+			continue
+		}
 		for _, cfg := range cfgs {
 			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName} {
 				_, inLimits := res.Limits[corev1.ResourceName(name)]
