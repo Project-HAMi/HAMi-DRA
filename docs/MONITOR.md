@@ -116,12 +116,14 @@ The monitor exposes the following Prometheus metrics:
 
 | Metrics | Description | Example |
 | --- | --- | --- |
-| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1 |
-| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 2.5769803776e+10 |
-| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 0.3 |
-| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node"}` 1.073741824e+10 |
-| hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 0.3 |
-| hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{devicebrand="Nvidia",deviceidx="0",devicename="hami-gpu-1",deviceproductname="NVIDIA A30",deviceuuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",nodeid="a30-node",podname="pod-0",podnamespace="default"}` 1.073741824e+10 |
+| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1 |
+| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 2.5769803776e+10 |
+| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 0.3 |
+| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1.073741824e+10 |
+| hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 0.3 |
+| hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 1.073741824e+10 |
+
+The `hami_dra_*_core_*_ratio` metrics use a 0-1 scale, while HAMi's core ratio metrics, such as `hami_gpu_core_allocated_ratio`, use 0-100.
 
 ### Legacy metrics
 
@@ -137,6 +139,21 @@ The old metric names are still exported while `--legacy-metrics` is enabled (the
 | vGPUDeviceMemoryAllocated | hami_dra_vgpu_memory_allocated_bytes |
 
 Legacy metrics keep their original units: memory in MB and cores on a 0-100 scale.
+
+Legacy metrics also keep their old label names. The new metrics rename them:
+
+| Old label | New label |
+| --- | --- |
+| `nodeid` | `node` |
+| `deviceuuid` | `device_uuid` |
+| `deviceidx` | `device_index` |
+| `devicename` | `device_name` |
+| `deviceproductname` | `device_type` |
+| `devicebrand` | removed |
+| `podnamespace` | `namespace` |
+| `podname` | `pod` |
+
+The per-pod metrics (`hami_dra_vgpu_*`) keep `node`, `device_uuid`, `namespace` and `pod`.
 
 ## Endpoints
 
@@ -188,6 +205,16 @@ scrape_configs:
     static_configs:
       - targets:
         - 'hami-dra-monitor.<namespace>.svc.cluster.local:8080'
+```
+
+### Label Conflicts
+
+The per-pod metrics come with their own `namespace` and `pod` labels. If your scrape config adds `namespace` or `pod` to the target as well (a Prometheus Operator `ServiceMonitor` does this by default), the two clash and Prometheus renames ours to `exported_namespace` and `exported_pod`. To keep the original names, set `honor_labels: true` on the scrape job, or `honorLabels: true` on the `ServiceMonitor` endpoint:
+
+```yaml
+scrape_configs:
+  - job_name: 'hami-dra-monitor'
+    honor_labels: true
 ```
 
 ## Resource Requirements

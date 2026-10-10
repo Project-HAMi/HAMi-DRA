@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	defaultCollectInterval = 30 * time.Second
+	defaultCollectInterval  = 30 * time.Second
+	defaultDeviceConfigFile = "/device-config.yaml"
 )
 
 // Options contains everything necessary to create and run monitor server.
@@ -49,6 +50,8 @@ type Options struct {
 	CollectInterval time.Duration
 	// LegacyMetrics additionally exports the legacy metric names.
 	LegacyMetrics bool
+	// DeviceConfigFile is the path to the device config file.
+	DeviceConfigFile string
 }
 
 // NewOptions builds an empty options.
@@ -64,6 +67,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", ":8000", "The TCP address that the controller should bind to for serving health probes(e.g. 127.0.0.1:8000, :8000)")
 	flags.DurationVar(&o.CollectInterval, "collect-interval", defaultCollectInterval, "The interval at which metrics are collected.")
 	flags.BoolVar(&o.LegacyMetrics, "legacy-metrics", true, "Export the legacy metric names in addition to the current ones.")
+	flags.StringVar(&o.DeviceConfigFile, "device-config-file", defaultDeviceConfigFile, "The path to the device config file. Built-in defaults are used if the file does not exist.")
 }
 
 // Validate validates the options and returns aggregated errors.
