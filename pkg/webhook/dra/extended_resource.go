@@ -36,8 +36,15 @@ func ExtendedResourceWarnings(ctx context.Context, c client.Reader, cfgs []*conf
 	used := map[string]bool{}
 	for _, container := range containers {
 		for _, cfg := range cfgs {
-			if _, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCountName)]; ok {
-				used[cfg.ResourceCountName] = true
+			// Core and memory are only stripped together with the count.
+			if _, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCountName)]; !ok {
+				continue
+			}
+			used[cfg.ResourceCountName] = true
+			for _, name := range []string{cfg.ResourceCoreName, cfg.ResourceMemoryName} {
+				if _, ok := container.Resources.Limits[corev1.ResourceName(name)]; ok {
+					used[name] = true
+				}
 			}
 		}
 	}

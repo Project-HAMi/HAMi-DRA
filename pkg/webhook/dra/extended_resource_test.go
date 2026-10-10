@@ -19,6 +19,7 @@ package dra
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,6 +82,42 @@ func TestHandleWarnsOnExtendedResourceConflict(t *testing.T) {
 			require.True(t, resp.Allowed)
 			assert.NotEmpty(t, resp.Patches)
 			assert.Len(t, resp.Warnings, tc.wantWarnings)
+		})
+	}
+}
+
+func TestExtendedResourceWarningsCoversCoreAndMemory(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	cfg := defaultNvidiaDeviceConfig()
+	limits := func(names ...string) []corev1.Container {
+		l := corev1.ResourceList{}
+		for _, n := range names {
+			l[corev1.ResourceName(n)] = resource.MustParse("1")
+		}
+		return []corev1.Container{{Resources: corev1.ResourceRequirements{Limits: l}}}
+	}
+	for _, tc := range []struct {
+		name       string
+		containers []corev1.Container
+		want       int
+	}{
+		{"memory stripped with count", limits(cfg.ResourceCountName, cfg.ResourceMemoryName), 1},
+		{"core stripped with count", limits(cfg.ResourceCountName, cfg.ResourceCoreName), 1},
+		{"memory kept without count", limits(cfg.ResourceMemoryName), 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extended := cfg.ResourceMemoryName
+			if strings.Contains(tc.name, "core") {
+				extended = cfg.ResourceCoreName
+			}
+			dc := &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "gpu"},
+				Spec:       resourceapi.DeviceClassSpec{ExtendedResourceName: &extended},
+			}
+			c := fake.NewClientBuilder().WithScheme(sch).WithObjects(dc).Build()
+			got := ExtendedResourceWarnings(context.Background(), c, []*config.DRADeviceConfig{cfg}, tc.containers)
+			assert.Len(t, got, tc.want)
 		})
 	}
 }
