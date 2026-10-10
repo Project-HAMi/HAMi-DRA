@@ -1,7 +1,7 @@
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BUILD_ARCH ?= linux/$(GOARCH)
-GOTOOLCHAIN ?= go1.26.6+auto
+GOTOOLCHAIN ?= go1.26.9+auto
 GOLANGCI_LINT_VERSION ?= v2.5.0
 GOLANGCI_LINT_ARGS ?= --timeout=5m
 GO_LICENSE_FILES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./bin/*")
