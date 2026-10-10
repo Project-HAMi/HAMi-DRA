@@ -14,7 +14,7 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: go1.26.6+auto
+      GOTOOLCHAIN: go1.26.9+auto
     
     steps:
       - name: Checkout repository
@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.6'
+          go-version: '1.26.9'
           cache-dependency-path: go.sum
 
       - name: Download dependencies
@@ -48,7 +48,7 @@ jobs:
     name: Run Linter
     runs-on: ubuntu-latest
     env:
-      GOTOOLCHAIN: go1.26.6+auto
+      GOTOOLCHAIN: go1.26.9+auto
     
     steps:
       - name: Checkout repository
@@ -57,7 +57,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.6'
+          go-version: '1.26.9'
           cache-dependency-path: go.sum
 
       - name: Run golangci-lint
@@ -181,7 +181,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.6'
+          go-version: '1.26.9'
           cache-dependency-path: go.sum
 
       - name: Run govulncheck
