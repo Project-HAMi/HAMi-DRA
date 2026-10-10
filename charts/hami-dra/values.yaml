@@ -32,8 +32,19 @@ hcuDraDriverName: dra.hygon.com
 # compute units from: kubectl get resourceslice -o yaml
 # Whole-card only (hygon.com/hcunum without hcumem/hcucores) can leave 0.
 hcuReferenceComputeUnits: 0
+# AMD GPU parameters (webhook when deviceVendors contains amd). The driver is
+# ROCm/k8s-gpu-dra-driver (gpu.amd.com), installed separately.
+amdResourceName: "amd.com/gpu"
+amdResourceMem: "amd.com/gpumem"
+amdResourceCores: "amd.com/gpucores"
+amdDeviceClassName: gpu.amd.com
+amdDraDriverName: gpu.amd.com
+# When a Pod requests amd.com/gpucores (percentage), set to one GPU's computeUnits
+# capacity from: kubectl get resourceslice -o yaml
+# Requests without amd.com/gpucores can leave 0.
+amdReferenceComputeUnits: 0
 deviceVendors:
-  - nvidia  # nvidia | hygon | ascend
+  - nvidia  # nvidia | hygon | amd | ascend
 
 # Ascend NPU parameters (webhook when deviceVendors contains ascend).
 # Device list matches HAMi vnpus.configs (commonWord + resource names).

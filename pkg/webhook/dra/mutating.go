@@ -174,7 +174,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 				cleanup()
 				return nil, err
 			}
-			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
+			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests[resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())] = converted
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
 		}
 		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {

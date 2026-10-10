@@ -95,7 +95,26 @@ type Config struct {
 	LegacyVendor string       `yaml:"vendor"`
 	Nvidia       NvidiaConfig `yaml:"nvidia"`
 	Hygon        HygonConfig  `yaml:"hygon"`
+	Amd          AmdConfig    `yaml:"amd"`
 	Ascend       AscendConfig `yaml:"ascend"`
+}
+
+// AmdConfig holds GPU DRA settings for k8s-gpu-dra-driver (gpu.amd.com).
+type AmdConfig struct {
+	ResourceCountName  string `yaml:"resourceCountName"`
+	ResourceMemoryName string `yaml:"resourceMemoryName"`
+	ResourceCoreName   string `yaml:"resourceCoreName"`
+	DeviceClassName    string `yaml:"deviceClassName"`
+	DraDriverName      string `yaml:"draDriverName"`
+	RequestName        string `yaml:"requestName"`
+
+	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
+	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`
+	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
+	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
+
+	// ReferenceComputeUnits converts amd.com/gpucores (percentage) to absolute computeUnits for DRA.
+	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
 }
 
 // HygonConfig holds HCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).

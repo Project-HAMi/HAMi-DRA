@@ -30,6 +30,7 @@ const (
 	VendorNvidia = "nvidia"
 	VendorHygon  = "hygon"
 	VendorAscend = "ascend"
+	VendorAMD    = "amd"
 )
 
 // DRADeviceConfig holds runtime settings for converting device-plugin resources to DRA claims.
@@ -42,6 +43,9 @@ type DRADeviceConfig struct {
 	DraDriverName      string
 	RequestName        string
 	DeviceType         string
+	// CoreCapacityName is the capacity the driver publishes for compute units;
+	// empty means "cores".
+	CoreCapacityName string
 	// CommonWord is the HAMi chip key (e.g. Ascend310P). Empty for NVIDIA/Hygon.
 	CommonWord string
 
@@ -50,7 +54,7 @@ type DRADeviceConfig struct {
 	UseTypeAnnotation   string
 	NoUseTypeAnnotation string
 
-	// ReferenceComputeUnits converts hygon.com/hcucores percentage to absolute cores when > 0.
+	// ReferenceComputeUnits converts a core percentage (hygon.com/hcucores, amd.com/gpucores) to absolute cores when > 0.
 	ReferenceComputeUnits int64
 }
 
@@ -66,6 +70,13 @@ func (c *DRADeviceConfig) EffectiveDraDriverName() string {
 		return c.DraDriverName
 	}
 	return constants.NvidiaDraDriver
+}
+
+func (c *DRADeviceConfig) EffectiveCoreCapacityName() string {
+	if c != nil && c.CoreCapacityName != "" {
+		return c.CoreCapacityName
+	}
+	return constants.DeviceCapacityCores
 }
 
 func (c *DRADeviceConfig) ClaimNameSuffix() string {
@@ -85,7 +96,7 @@ func (c *DRADeviceConfig) TypeSelectorExpression() string {
 
 func (c *DRADeviceConfig) selectorIncludesDriver() bool {
 	switch c.DeviceType {
-	case constants.HygonDeviceType, constants.AscendHAMivNPUCoreDeviceType:
+	case constants.HygonDeviceType, constants.AmdDeviceType, constants.AscendHAMivNPUCoreDeviceType:
 		return true
 	default:
 		return false
@@ -123,8 +134,8 @@ func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quant
 }
 
 func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quantity, error) {
-	if c.DeviceType == constants.HygonDeviceType && c.ReferenceComputeUnits <= 0 {
-		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert hygon.com/hcucores requests")
+	if (c.DeviceType == constants.HygonDeviceType || c.DeviceType == constants.AmdDeviceType) && c.ReferenceComputeUnits <= 0 {
+		return resource.Quantity{}, fmt.Errorf("referenceComputeUnits must be configured to convert %s requests", c.ResourceCoreName)
 	}
 	if c.ReferenceComputeUnits > 0 {
 		pct := coreQty.Value()
@@ -178,6 +189,28 @@ func draDeviceFromHygon(c *HygonConfig) *DRADeviceConfig {
 		ReferenceComputeUnits: c.ReferenceComputeUnits,
 	}
 	return cfg
+}
+
+func draDeviceFromAMD(c *AmdConfig) *DRADeviceConfig {
+	if c == nil {
+		c = &AmdConfig{}
+	}
+	return &DRADeviceConfig{
+		Vendor:                VendorAMD,
+		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "amd.com/gpu"),
+		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "amd.com/gpumem"),
+		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "amd.com/gpucores"),
+		DeviceClassName:       firstNonEmpty(c.DeviceClassName, constants.AmdDraDriver),
+		DraDriverName:         firstNonEmpty(c.DraDriverName, constants.AmdDraDriver),
+		RequestName:           firstNonEmpty(c.RequestName, "gpu"),
+		DeviceType:            constants.AmdDeviceType,
+		CoreCapacityName:      constants.DeviceCapacityComputeUnits,
+		UseUUIDAnnotation:     firstNonEmpty(c.UseUUIDAnnotation, constants.AmdUseUUIDAnnotation),
+		NoUseUUIDAnnotation:   firstNonEmpty(c.NoUseUUIDAnnotation, constants.AmdNoUseUUIDAnnotation),
+		UseTypeAnnotation:     firstNonEmpty(c.UseTypeAnnotation, constants.AmdUseTypeAnnotation),
+		NoUseTypeAnnotation:   firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
+		ReferenceComputeUnits: c.ReferenceComputeUnits,
+	}
 }
 
 // DefaultAscendVNPUs matches HAMi charts/hami scheduler device-config vnpus.configs.
@@ -308,6 +341,8 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			configs = []*DRADeviceConfig{draDeviceFromNvidia(&c.Nvidia)}
 		case VendorHygon:
 			configs = []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}
+		case VendorAMD:
+			configs = []*DRADeviceConfig{draDeviceFromAMD(&c.Amd)}
 		case VendorAscend:
 			var emptyIndexes []int
 			configs, emptyIndexes = draDevicesFromAscend(&c.Ascend)
