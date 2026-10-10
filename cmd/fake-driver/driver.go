@@ -135,6 +135,11 @@ func (d *driver) unprepareResourceClaim(_ context.Context, claim kubeletplugin.N
 	return nil
 }
 
+// WatchHealthStatus opts out of device health reporting, the fake devices have no health.
+func (d *driver) WatchHealthStatus(context.Context, chan<- kubeletplugin.DeviceHealthReport) error {
+	return kubeletplugin.ErrHealthNotSupported
+}
+
 func (d *driver) HandleError(ctx context.Context, err error, msg string) {
 	utilruntime.HandleErrorWithContext(ctx, err, msg)
 	if !errors.Is(err, kubeletplugin.ErrRecoverable) && d.cancelCtx != nil {
