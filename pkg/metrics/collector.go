@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/cache"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog/v2"
 )
@@ -29,14 +30,16 @@ import (
 const coreScale = 100
 
 type Collector struct {
-	cache  *cache.Cache
-	legacy bool
+	cache       *cache.Cache
+	legacy      bool
+	deviceTypes config.DeviceTypeTable
 }
 
-func NewCollector(cache *cache.Cache, legacy bool) *Collector {
+func NewCollector(cache *cache.Cache, legacy bool, deviceTypes config.DeviceTypeTable) *Collector {
 	return &Collector{
-		cache:  cache,
-		legacy: legacy,
+		cache:       cache,
+		legacy:      legacy,
+		deviceTypes: deviceTypes,
 	}
 }
 
@@ -78,6 +81,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 
 		for idx, device := range devices {
 			deviceIdx := strconv.Itoa(idx)
+			deviceType := c.deviceTypes.DeviceType(device.Driver, device.ProductName)
 
 			// hami_dra_gpu_memory_limit_bytes
 			ch <- prometheus.MustNewConstMetric(
@@ -85,7 +89,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryTotal),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_limit_ratio
@@ -94,7 +98,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresTotal)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_memory_allocated_bytes
@@ -103,7 +107,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.MemoryUsed),
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			// hami_dra_gpu_core_allocated_ratio
@@ -112,7 +116,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 				prometheus.GaugeValue,
 				float64(device.CoresUsed)/coreScale,
 				nodeName, device.UUID, deviceIdx,
-				device.Name, device.Brand, device.ProductName,
+				device.Name, deviceType,
 			)
 
 			if !c.legacy {
@@ -159,7 +163,78 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 	klog.V(5).Infof("Collected metrics for %d nodes", len(nodeNames))
 }
 
+// podDevice is one pod's allocation on one device, summed over its claims.
+type podDevice struct {
+	node, namespace, pod string
+	device               *cache.NodeDevice
+	deviceIdx            string
+	cores, memory        int64
+}
+
+type podDeviceKey struct {
+	node, deviceName, namespace, pod string
+}
+
 func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
+	for _, pd := range c.podDevices() {
+		if pd.device.UUID != "" {
+			ch <- prometheus.MustNewConstMetric(
+				podvGPUCoreAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(pd.cores)/coreScale,
+				pd.node,
+				pd.device.UUID,
+				pd.namespace,
+				pd.pod,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				podvGPUMemoryAllocatedDesc,
+				prometheus.GaugeValue,
+				float64(pd.memory),
+				pd.node,
+				pd.device.UUID,
+				pd.namespace,
+				pd.pod,
+			)
+		}
+
+		if !c.legacy {
+			continue
+		}
+
+		ch <- prometheus.MustNewConstMetric(
+			legacyPodvGPUCoreAllocatedDesc,
+			prometheus.GaugeValue,
+			float64(pd.cores),
+			pd.node,
+			pd.device.UUID,
+			pd.deviceIdx,
+			pd.device.Name,
+			pd.device.Brand,
+			pd.device.ProductName,
+			pd.namespace,
+			pd.pod,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			legacyPodvGPUMemoryAllocatedDesc,
+			prometheus.GaugeValue,
+			float64(pd.memory)/1024/1024,
+			pd.node,
+			pd.device.UUID,
+			pd.deviceIdx,
+			pd.device.Name,
+			pd.device.Brand,
+			pd.device.ProductName,
+			pd.namespace,
+			pd.pod,
+		)
+	}
+}
+
+// podDevices sums each pod's claims per device. A pod can hold several
+// claims on one GPU, and a scrape fails if a series appears twice.
+func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
+	sums := make(map[podDeviceKey]*podDevice)
 	claims := c.cache.NodeDevices.GetAllClaims()
 
 	for _, claim := range claims {
@@ -180,64 +255,22 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 			}
 
 			for _, podName := range claim.UsedBy {
-				ch <- prometheus.MustNewConstMetric(
-					podvGPUCoreAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Cores)/coreScale,
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					podvGPUMemoryAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Memory),
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
-
-				if !c.legacy {
-					continue
+				key := podDeviceKey{claim.NodeName, device.Name, result.Namespace, podName}
+				pd, ok := sums[key]
+				if !ok {
+					pd = &podDevice{
+						node:      claim.NodeName,
+						namespace: result.Namespace,
+						pod:       podName,
+						device:    device,
+						deviceIdx: deviceIdx,
+					}
+					sums[key] = pd
 				}
-
-				ch <- prometheus.MustNewConstMetric(
-					legacyPodvGPUCoreAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Cores),
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					legacyPodvGPUMemoryAllocatedDesc,
-					prometheus.GaugeValue,
-					float64(result.Memory)/1024/1024,
-					claim.NodeName,
-					device.UUID,
-					deviceIdx,
-					device.Name,
-					device.Brand,
-					device.ProductName,
-					result.Namespace,
-					podName,
-				)
+				pd.cores += result.Cores
+				pd.memory += result.Memory
 			}
 		}
 	}
+	return sums
 }

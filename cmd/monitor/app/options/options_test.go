@@ -34,3 +34,14 @@ func TestLegacyMetricsFlag(t *testing.T) {
 	require.NoError(t, flags.Parse([]string{"--legacy-metrics=false"}))
 	assert.False(t, opts.LegacyMetrics)
 }
+
+func TestDeviceConfigFileFlag(t *testing.T) {
+	opts := NewOptions()
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.AddFlags(flags)
+
+	assert.Equal(t, "/device-config.yaml", opts.DeviceConfigFile)
+
+	require.NoError(t, flags.Parse([]string{"--device-config-file=test-device-config.yaml"}))
+	assert.Equal(t, "test-device-config.yaml", opts.DeviceConfigFile)
+}
