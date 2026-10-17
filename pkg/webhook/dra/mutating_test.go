@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	draCEL "k8s.io/dynamic-resource-allocation/cel"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -78,7 +79,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseUUIDAnnotation: "gpu-999,gpu-888",
 			},
 			wantSelectors: []string{
-				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999","gpu-888"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].uuid) || !(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999","gpu-888"])`,
 			},
 		},
 
@@ -108,7 +109,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseTypeAnnotation: "A100,H100",
 			},
 			wantSelectors: []string{
-				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100","H100"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].productName) || !(device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100","H100"])`,
 			},
 		},
 
@@ -122,9 +123,9 @@ func TestAddAnnotationSelectors(t *testing.T) {
 			},
 			wantSelectors: []string{
 				`device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-123","gpu-456"]`,
-				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].uuid) || !(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999"])`,
 				`device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100"]`,
-				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["H100"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].productName) || !(device.attributes["hami-core-gpu.project-hami.io"].productName in ["H100"])`,
 			},
 		},
 		{
@@ -672,7 +673,7 @@ func TestHandleContainerAMD(t *testing.T) {
 	assert.False(t, hasCores, "the AMD driver has no cores capacity")
 	require.Len(t, exactly.Selectors, 3)
 	assert.Equal(t, `device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"`, exactly.Selectors[0].CEL.Expression)
-	assert.Equal(t, `!(device.attributes["gpu.amd.com"].uuid in ["GPU-bad"])`, exactly.Selectors[1].CEL.Expression)
+	assert.Equal(t, `!has(device.attributes["gpu.amd.com"].uuid) || !(device.attributes["gpu.amd.com"].uuid in ["GPU-bad"])`, exactly.Selectors[1].CEL.Expression)
 	assert.Equal(t, `device.attributes["gpu.amd.com"].productName in ["AMD Instinct MI300X"]`, exactly.Selectors[2].CEL.Expression)
 }
 
@@ -727,4 +728,38 @@ func TestHandleUpdateStripsReappliedResources(t *testing.T) {
 	resp = a.handleUpdate(req, pod)
 	require.True(t, resp.Allowed)
 	assert.Empty(t, resp.Patches, "nothing to strip on a plain update")
+}
+
+// The AMD driver publishes neither uuid nor, on some cards, productName. An
+// exclusion must still match such a device instead of failing on the lookup.
+func TestExclusionSelectorsMatchDevicesWithoutTheAttribute(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	claim := &resourceapi.ResourceClaim{Spec: resourceapi.ResourceClaimSpec{Devices: resourceapi.DeviceClaim{
+		Requests: []resourceapi.DeviceRequest{cfgs[0].NewPrimaryDeviceRequest()},
+	}}}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+		constants.AmdNoUseUUIDAnnotation: "GPU-bad",
+		constants.AmdNoUseTypeAnnotation: "MI300X",
+	}}}
+	require.NoError(t, (&MutatingAdmission{}).addAnnotationSelectors(claim, pod, cfgs[0]))
+
+	str := func(v string) resourceapi.DeviceAttribute { return resourceapi.DeviceAttribute{StringValue: &v} }
+	matches := func(attrs map[resourceapi.QualifiedName]resourceapi.DeviceAttribute) bool {
+		for _, sel := range claim.Spec.Devices.Requests[0].Exactly.Selectors {
+			result := draCEL.GetCompiler(draCEL.Features{}).CompileCELExpression(sel.CEL.Expression, draCEL.Options{})
+			require.Nil(t, result.Error, sel.CEL.Expression)
+			ok, _, err := result.DeviceMatches(context.Background(), draCEL.Device{Driver: "gpu.amd.com", Attributes: attrs})
+			require.NoError(t, err, sel.CEL.Expression)
+			if !ok {
+				return false
+			}
+		}
+		return true
+	}
+
+	assert.True(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu")}))
+	assert.True(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "uuid": str("GPU-ok"), "productName": str("RX9060XT")}))
+	assert.False(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "uuid": str("GPU-bad")}))
+	assert.False(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "productName": str("MI300X")}))
 }

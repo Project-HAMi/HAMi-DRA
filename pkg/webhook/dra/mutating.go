@@ -346,9 +346,12 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		if len(literals) == 0 {
 			return fmt.Errorf("annotation %s has no usable value: %q", sel.annotation, raw)
 		}
-		expr := fmt.Sprintf(`device.attributes[%q].%s in [%s]`, draDriverName, sel.field, strings.Join(literals, ","))
+		attr := fmt.Sprintf(`device.attributes[%q].%s`, draDriverName, sel.field)
+		expr := fmt.Sprintf(`%s in [%s]`, attr, strings.Join(literals, ","))
 		if sel.negate {
-			expr = "!(" + expr + ")"
+			// A device without the attribute is not on the exclusion list; looking
+			// it up anyway is a CEL runtime error that blocks the allocation.
+			expr = "!has(" + attr + ") || !(" + expr + ")"
 		}
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{Expression: expr},
