@@ -77,9 +77,16 @@ require (
 )
 
 require (
+	cel.dev/expr v0.25.2 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/google/cel-go v0.26.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/stoewer/go-strcase v1.3.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.14 // indirect
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
+	k8s.io/apiserver v0.36.4 // indirect
 	k8s.io/kubelet v0.36.4 // indirect
 )

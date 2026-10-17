@@ -26,3 +26,15 @@ spec:
       expression: |-
         device.driver == "{{ include "hami.dra.driver.fake.driverName" . }}" && device.attributes["{{ include "hami.dra.driver.fake.driverName" . }}"].type == "{{ include "hami.dra.driver.fake.deviceType" . }}"
 {{- end }}
+{{- if .Values.drivers.amd.enabled }}
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: {{ .Values.amdDeviceClassName }}
+spec:
+  selectors:
+  - cel:
+      expression: |-
+        device.driver == "{{ .Values.amdDraDriverName }}"
+{{- end }}

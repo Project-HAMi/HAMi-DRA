@@ -592,3 +592,41 @@ func createTestResourceClaim(name, namespace, nodeName, deviceName string, cores
 		},
 	}
 }
+
+// AMD's DRA driver publishes computeUnits instead of a percent-based cores
+// capacity; the cache counts CUs and scales them by the device's CU count.
+func TestCache_ComputeUnitsCountAsCores(t *testing.T) {
+	c := &Cache{NodeDevices: NewNodeDevices(), stopCh: make(chan struct{})}
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "amd"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   "gpu.amd.com",
+			NodeName: stringPtr("gpu-node"),
+			Devices: []resourceapi.Device{{
+				Name: "gpu-1-129",
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+					constants.DeviceCapacityComputeUnits: {Value: resource.MustParse("32")},
+					constants.DeviceCapacityMemory:       {Value: resource.MustParse("16304Mi")},
+				},
+			}},
+		},
+	}
+	c.onAddSlice(slice)
+	claim := createTestResourceClaim("slice", "default", "gpu-node", "gpu-1-129", 0, 2097152000)
+	claim.Status.Allocation.Devices.Results[0].ConsumedCapacity = map[resourceapi.QualifiedName]resource.Quantity{
+		constants.DeviceCapacityComputeUnits: resource.MustParse("16"),
+		constants.DeviceCapacityMemory:       resource.MustParse("2097152000"),
+	}
+	c.onAddClaim(claim)
+
+	device := c.NodeDevices.GetDevices("gpu-node")[0]
+	if device.CoresTotal != 32 || device.CoresUsed != 16 {
+		t.Fatalf("got CoresTotal %d CoresUsed %d, want 32 and 16", device.CoresTotal, device.CoresUsed)
+	}
+	if got := device.CoreRatio(device.CoresUsed); got != 0.5 {
+		t.Errorf("CoreRatio(CoresUsed) = %v, want 0.5", got)
+	}
+	if got := device.CoreRatio(device.CoresTotal); got != 1 {
+		t.Errorf("CoreRatio(CoresTotal) = %v, want 1", got)
+	}
+}

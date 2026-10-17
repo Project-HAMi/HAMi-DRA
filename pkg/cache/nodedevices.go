@@ -24,6 +24,7 @@ import (
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
 	v1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 )
 
@@ -51,8 +52,11 @@ type NodeDevice struct {
 	ProductName  string
 	CoresTotal   int64
 	CoresUsed    int64
-	MemoryTotal  int64
-	MemoryUsed   int64
+	// CoreScale is the core amount that makes up the whole device: 100 for a
+	// percent-based "cores" capacity, the CU count for "computeUnits" (AMD).
+	CoreScale   int64
+	MemoryTotal int64
+	MemoryUsed  int64
 }
 
 type DeviceAllocation struct {
@@ -96,6 +100,13 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 	nodeDevices := []*NodeDevice{}
 	for _, device := range slice.Spec.Devices {
 		coresTotal := device.Capacity[constants.DeviceCapacityCores].Value
+		coreScale := int64(100)
+		if _, ok := device.Capacity[constants.DeviceCapacityCores]; !ok {
+			if cu, ok := device.Capacity[constants.DeviceCapacityComputeUnits]; ok {
+				coresTotal = cu.Value
+				coreScale = cu.Value.Value()
+			}
+		}
 		memoryTotal := device.Capacity[constants.DeviceCapacityMemory].Value
 
 		uuid := ""
@@ -126,6 +137,7 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 			ProductName:  productName,
 			CoresTotal:   coresTotal.Value(),
 			CoresUsed:    0,
+			CoreScale:    coreScale,
 			MemoryTotal:  memoryTotal.Value(),
 			MemoryUsed:   0,
 		})
@@ -148,17 +160,8 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 
 	deviceCopies := make([]*NodeDevice, len(nodeInfo.Devices))
 	for i, device := range nodeInfo.Devices {
-		deviceCopies[i] = &NodeDevice{
-			Name:         device.Name,
-			UUID:         device.UUID,
-			Architecture: device.Architecture,
-			Brand:        device.Brand,
-			ProductName:  device.ProductName,
-			CoresTotal:   device.CoresTotal,
-			CoresUsed:    device.CoresUsed,
-			MemoryTotal:  device.MemoryTotal,
-			MemoryUsed:   device.MemoryUsed,
-		}
+		deviceCopy := *device
+		deviceCopies[i] = &deviceCopy
 	}
 	return deviceCopies
 }
@@ -209,7 +212,7 @@ func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 		for _, result := range claim.Status.Allocation.Devices.Results {
 			if result.ConsumedCapacity != nil && result.Device != "" {
 
-				coresPerDevice := result.ConsumedCapacity[constants.DeviceCapacityCores]
+				coresPerDevice := consumedCores(result.ConsumedCapacity)
 				memoryPerDevice := result.ConsumedCapacity[constants.DeviceCapacityMemory]
 				klog.V(5).Infof("Increasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
 					result.Device, nodeName, coresPerDevice.Value(), memoryPerDevice.Value())
@@ -254,7 +257,7 @@ func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
 			}
 			for _, result := range claim.Status.Allocation.Devices.Results {
 				if result.ConsumedCapacity != nil && result.Device != "" {
-					coresPerDevice := result.ConsumedCapacity[constants.DeviceCapacityCores]
+					coresPerDevice := consumedCores(result.ConsumedCapacity)
 					memoryPerDevice := result.ConsumedCapacity[constants.DeviceCapacityMemory]
 					klog.V(5).Infof("Decreasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
 						result.Device, nodeName, coresPerDevice.Value(), memoryPerDevice.Value())
@@ -351,4 +354,21 @@ func getNodeNameFromNodeSelector(nodeSelector *v1.NodeSelector) (string, error) 
 		}
 	}
 	return "", fmt.Errorf("node selector does not contain metadata.name")
+}
+
+// consumedCores returns the "cores" a result consumed, or its "computeUnits"
+// for drivers that publish CUs instead (AMD).
+func consumedCores(consumed map[resourceapi.QualifiedName]resource.Quantity) resource.Quantity {
+	if q, ok := consumed[constants.DeviceCapacityCores]; ok {
+		return q
+	}
+	return consumed[constants.DeviceCapacityComputeUnits]
+}
+
+// CoreRatio returns cores as a fraction of the whole device.
+func (d *NodeDevice) CoreRatio(cores int64) float64 {
+	if d.CoreScale <= 0 {
+		return float64(cores) / 100
+	}
+	return float64(cores) / float64(d.CoreScale)
 }
