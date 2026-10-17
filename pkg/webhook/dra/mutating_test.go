@@ -692,3 +692,39 @@ func TestHandleContainerAMDNeedsReferenceComputeUnitsForCores(t *testing.T) {
 	require.NoError(t, admission.Client.List(context.Background(), claims))
 	assert.Empty(t, claims.Items, "a failed conversion must not leave a claim behind")
 }
+
+func TestHandleUpdateStripsReappliedResources(t *testing.T) {
+	a := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
+	gpu := corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1"), "nvidia.com/gpumem": resource.MustParse("1000")}
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
+		{
+			Name: "c",
+			Resources: corev1.ResourceRequirements{
+				Limits: gpu.DeepCopy(), Requests: gpu.DeepCopy(),
+				Claims: []corev1.ResourceClaim{{Name: "claim"}},
+			},
+		},
+		{
+			Name:      "no-claims",
+			Resources: corev1.ResourceRequirements{Limits: gpu.DeepCopy(), Requests: gpu.DeepCopy()},
+		},
+	}}}
+
+	raw, err := json.Marshal(pod)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: runtime.RawExtension{Raw: raw}}}
+	resp := a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Patches)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Limits)
+	assert.Empty(t, pod.Spec.Containers[0].Resources.Requests)
+	assert.Equal(t, gpu, pod.Spec.Containers[1].Resources.Limits, "container without claims is left alone")
+	assert.Equal(t, gpu, pod.Spec.Containers[1].Resources.Requests)
+
+	raw, err = json.Marshal(pod)
+	require.NoError(t, err)
+	req.Object.Raw = raw
+	resp = a.handleUpdate(req, pod)
+	require.True(t, resp.Allowed)
+	assert.Empty(t, resp.Patches, "nothing to strip on a plain update")
+}
