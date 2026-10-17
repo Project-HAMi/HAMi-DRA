@@ -282,7 +282,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/amd-dra-driver
-      tag: "sha-5249722"
+      tag: "v0.1.0"
       pullPolicy: IfNotPresent
       pullSecrets: []
   fake:
