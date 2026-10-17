@@ -806,6 +806,9 @@ func TestAMDTypeAnnotationsMatchPartsOfTheName(t *testing.T) {
 	assert.True(t, matches(use("RX 9060"), "AMD_Radeon_RX_9060_XT"))
 	assert.True(t, matches(use("AMD Radeon RX 9060 XT"), "AMD_Radeon_RX_9060_XT"))
 	assert.True(t, matches(use("mi300, rx 9060"), "AMD_Radeon_RX_9060_XT"))
+	// The space after a comma is not part of the next name.
+	assert.True(t, matches(use("MI300, AMD Radeon RX 9060"), "AMD_Radeon_RX_9060_XT"))
+	assert.False(t, matches(nouse("MI300, AMD Radeon RX 9060"), "AMD_Radeon_RX_9060_XT"))
 	assert.True(t, matches(use("MI300"), "AMD_Instinct_MI300X"))
 	assert.False(t, matches(use("MI300"), "AMD_Radeon_RX_9060_XT"))
 	assert.False(t, matches(use("RX 9060"), ""), "a device without a name is not chosen")

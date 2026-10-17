@@ -374,7 +374,13 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		match := fmt.Sprintf(`%s in [%s]`, attr, strings.Join(literals, ","))
 		substring := sel.field == "productName" && cfg.TypeSubstringMatch
 		if substring {
-			match = fmt.Sprintf(`[%s].exists(t, %s.lowerAscii().contains(t))`, strings.Join(celStringList(typeNamePart(raw)), ","), attr)
+			var parts []string
+			for _, v := range strings.Split(raw, ",") {
+				if v = strings.TrimSpace(v); v != "" {
+					parts = append(parts, strconv.Quote(typeNamePart(v)))
+				}
+			}
+			match = fmt.Sprintf(`[%s].exists(t, %s.lowerAscii().contains(t))`, strings.Join(parts, ","), attr)
 		}
 		expr := match
 		switch {
