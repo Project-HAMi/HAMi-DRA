@@ -39,10 +39,13 @@ type DRADeviceConfig struct {
 	ResourceCountName  string
 	ResourceMemoryName string
 	ResourceCoreName   string
-	DeviceClassName    string
-	DraDriverName      string
-	RequestName        string
-	DeviceType         string
+	// ResourceMemoryPercentageName requests a share of each device's memory
+	// in percent; empty when the vendor does not support it.
+	ResourceMemoryPercentageName string
+	DeviceClassName              string
+	DraDriverName                string
+	RequestName                  string
+	DeviceType                   string
 	// CoreCapacityName is the capacity the driver publishes for compute units;
 	// empty means "cores".
 	CoreCapacityName string
@@ -53,6 +56,9 @@ type DRADeviceConfig struct {
 	NoUseUUIDAnnotation string
 	UseTypeAnnotation   string
 	NoUseTypeAnnotation string
+	// TypeSubstringMatch matches the type annotations as case-insensitive
+	// parts of productName, the way HAMi matches AMD GPU types.
+	TypeSubstringMatch bool
 
 	// ReferenceComputeUnits converts a core percentage (hygon.com/hcucores, amd.com/gpucores) to absolute cores when > 0.
 	ReferenceComputeUnits int64
@@ -196,20 +202,22 @@ func draDeviceFromAMD(c *AmdConfig) *DRADeviceConfig {
 		c = &AmdConfig{}
 	}
 	return &DRADeviceConfig{
-		Vendor:                VendorAMD,
-		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "amd.com/gpu"),
-		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "amd.com/gpumem"),
-		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "amd.com/gpucores"),
-		DeviceClassName:       firstNonEmpty(c.DeviceClassName, constants.AmdDraDriver),
-		DraDriverName:         firstNonEmpty(c.DraDriverName, constants.AmdDraDriver),
-		RequestName:           firstNonEmpty(c.RequestName, "gpu"),
-		DeviceType:            constants.AmdDeviceType,
-		CoreCapacityName:      constants.DeviceCapacityComputeUnits,
-		UseUUIDAnnotation:     firstNonEmpty(c.UseUUIDAnnotation, constants.AmdUseUUIDAnnotation),
-		NoUseUUIDAnnotation:   firstNonEmpty(c.NoUseUUIDAnnotation, constants.AmdNoUseUUIDAnnotation),
-		UseTypeAnnotation:     firstNonEmpty(c.UseTypeAnnotation, constants.AmdUseTypeAnnotation),
-		NoUseTypeAnnotation:   firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
-		ReferenceComputeUnits: c.ReferenceComputeUnits,
+		Vendor:                       VendorAMD,
+		ResourceCountName:            firstNonEmpty(c.ResourceCountName, "amd.com/gpu"),
+		ResourceMemoryName:           firstNonEmpty(c.ResourceMemoryName, "amd.com/gpumem"),
+		ResourceCoreName:             firstNonEmpty(c.ResourceCoreName, "amd.com/gpucores"),
+		ResourceMemoryPercentageName: firstNonEmpty(c.ResourceMemoryPercentageName, "amd.com/gpumem-percentage"),
+		DeviceClassName:              firstNonEmpty(c.DeviceClassName, constants.AmdDraDriver),
+		DraDriverName:                firstNonEmpty(c.DraDriverName, constants.AmdDraDriver),
+		RequestName:                  firstNonEmpty(c.RequestName, "gpu"),
+		DeviceType:                   constants.AmdDeviceType,
+		CoreCapacityName:             constants.DeviceCapacityComputeUnits,
+		UseUUIDAnnotation:            firstNonEmpty(c.UseUUIDAnnotation, constants.AmdUseUUIDAnnotation),
+		NoUseUUIDAnnotation:          firstNonEmpty(c.NoUseUUIDAnnotation, constants.AmdNoUseUUIDAnnotation),
+		UseTypeAnnotation:            firstNonEmpty(c.UseTypeAnnotation, constants.AmdUseTypeAnnotation),
+		NoUseTypeAnnotation:          firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
+		TypeSubstringMatch:           true,
+		ReferenceComputeUnits:        c.ReferenceComputeUnits,
 	}
 }
 
@@ -360,7 +368,7 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			if cfg.ResourceCountName == "" {
 				return nil, fmt.Errorf("device vendor %q has an empty count resource name", vendor)
 			}
-			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName} {
+			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName, cfg.ResourceMemoryPercentageName} {
 				if resourceName == "" {
 					continue
 				}

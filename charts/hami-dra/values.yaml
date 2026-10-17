@@ -37,6 +37,7 @@ hcuReferenceComputeUnits: 0
 amdResourceName: "amd.com/gpu"
 amdResourceMem: "amd.com/gpumem"
 amdResourceCores: "amd.com/gpucores"
+amdResourceMemPercentage: "amd.com/gpumem-percentage"
 amdDeviceClassName: gpu.amd.com
 amdDraDriverName: gpu.amd.com
 # When a Pod requests amd.com/gpucores (percentage), set to one GPU's computeUnits

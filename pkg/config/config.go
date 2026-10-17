@@ -101,12 +101,13 @@ type Config struct {
 
 // AmdConfig holds GPU DRA settings for k8s-gpu-dra-driver (gpu.amd.com).
 type AmdConfig struct {
-	ResourceCountName  string `yaml:"resourceCountName"`
-	ResourceMemoryName string `yaml:"resourceMemoryName"`
-	ResourceCoreName   string `yaml:"resourceCoreName"`
-	DeviceClassName    string `yaml:"deviceClassName"`
-	DraDriverName      string `yaml:"draDriverName"`
-	RequestName        string `yaml:"requestName"`
+	ResourceCountName            string `yaml:"resourceCountName"`
+	ResourceMemoryName           string `yaml:"resourceMemoryName"`
+	ResourceCoreName             string `yaml:"resourceCoreName"`
+	ResourceMemoryPercentageName string `yaml:"resourceMemoryPercentageName"`
+	DeviceClassName              string `yaml:"deviceClassName"`
+	DraDriverName                string `yaml:"draDriverName"`
+	RequestName                  string `yaml:"requestName"`
 
 	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
 	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`

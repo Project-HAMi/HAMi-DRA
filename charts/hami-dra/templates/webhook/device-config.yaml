@@ -241,6 +241,7 @@ data:
       resourceCountName: {{ .Values.amdResourceName }}
       resourceMemoryName: {{ .Values.amdResourceMem }}
       resourceCoreName: {{ .Values.amdResourceCores }}
+      resourceMemoryPercentageName: {{ .Values.amdResourceMemPercentage }}
       deviceClassName: {{ .Values.amdDeviceClassName }}
       draDriverName: {{ .Values.amdDraDriverName }}
       requestName: gpu
