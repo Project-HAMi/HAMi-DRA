@@ -290,7 +290,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/amd-dra-driver
-      tag: "0.3.0"
+      tag: "0.4.0"
       pullPolicy: IfNotPresent
       pullSecrets: []
   fake:
