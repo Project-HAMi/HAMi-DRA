@@ -260,6 +260,31 @@ drivers:
       ##   - myRegistryKeySecretName
       ##
       pullSecrets: []
+  # AMD GPU DRA driver from Project-HAMi/amd-dra-driver (gpu.amd.com), with the
+  # GPUSharing gate on so amd.com/gpumem and amd.com/gpucores slice one GPU.
+  # Add amd to deviceVendors and set amdReferenceComputeUnits to use it.
+  amd:
+    enabled: false
+    daemonSet:
+      nodeSelector: {}
+      tolerations: []
+      # Nodes labelled by HAMi's AMD GPU labeller.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: amd.com/gpu.family
+                operator: Exists
+    # Host path of HAMi's libamvgpu.so hook, installed by the HAMi AMD device
+    # plugin. It enforces amd.com/gpumem; empty leaves memory slices unenforced.
+    vgpuHookHostPath: /usr/local/vgpu/libamvgpu.so
+    image:
+      registry: ghcr.io
+      repository: project-hami/amd-dra-driver
+      tag: "sha-5249722"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
   fake:
     enabled: false
     deviceClassName: fake-gpu.project-hami.io
