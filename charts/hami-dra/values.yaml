@@ -278,8 +278,9 @@ drivers:
                 operator: Exists
     # Host path of HAMi's libamvgpu.so hook. The driver installs the hook
     # bundled in its image there at startup; it enforces amd.com/gpumem. Empty
-    # leaves memory slices unenforced.
-    vgpuHookHostPath: /usr/local/vgpu/libamvgpu.so
+    # leaves memory slices unenforced. Kept apart from /usr/local/vgpu/libamvgpu.so,
+    # which the HAMi AMD device plugin writes, so the two never overwrite each other.
+    vgpuHookHostPath: /usr/local/vgpu/amd-dra/libamvgpu.so
     image:
       registry: ghcr.io
       repository: project-hami/amd-dra-driver
