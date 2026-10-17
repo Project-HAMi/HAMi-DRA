@@ -268,7 +268,9 @@ drivers:
     daemonSet:
       nodeSelector: {}
       tolerations: []
-      # Nodes labelled by HAMi's AMD GPU labeller.
+      # AMD GPU nodes (labelled by HAMi's AMD GPU labeller) handed to DRA with
+      # hami.io/amd-mode=dra. The HAMi AMD device plugin stays off those nodes;
+      # both would hand out the same GPU.
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -276,6 +278,9 @@ drivers:
             - matchExpressions:
               - key: amd.com/gpu.family
                 operator: Exists
+              - key: hami.io/amd-mode
+                operator: In
+                values: ["dra"]
     # Host path of HAMi's libamvgpu.so hook. The driver installs the hook
     # bundled in its image there at startup; it enforces amd.com/gpumem. Empty
     # leaves memory slices unenforced. Kept apart from /usr/local/vgpu/libamvgpu.so,
