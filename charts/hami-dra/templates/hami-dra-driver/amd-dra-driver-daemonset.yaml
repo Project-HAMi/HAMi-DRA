@@ -79,6 +79,10 @@ spec:
           mountPath: /dev
         - name: sys
           mountPath: /sys
+        {{- with .Values.drivers.amd.vgpuHookHostPath }}
+        - name: vgpu-hook
+          mountPath: {{ dir . | quote }}
+        {{- end }}
       volumes:
       - name: plugins-registry
         hostPath:
@@ -95,4 +99,10 @@ spec:
       - name: sys
         hostPath:
           path: /sys
+      {{- with .Values.drivers.amd.vgpuHookHostPath }}
+      - name: vgpu-hook
+        hostPath:
+          path: {{ dir . | quote }}
+          type: DirectoryOrCreate
+      {{- end }}
 {{- end }}

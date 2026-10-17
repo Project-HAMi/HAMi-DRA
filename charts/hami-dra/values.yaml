@@ -276,8 +276,9 @@ drivers:
             - matchExpressions:
               - key: amd.com/gpu.family
                 operator: Exists
-    # Host path of HAMi's libamvgpu.so hook, installed by the HAMi AMD device
-    # plugin. It enforces amd.com/gpumem; empty leaves memory slices unenforced.
+    # Host path of HAMi's libamvgpu.so hook. The driver installs the hook
+    # bundled in its image there at startup; it enforces amd.com/gpumem. Empty
+    # leaves memory slices unenforced.
     vgpuHookHostPath: /usr/local/vgpu/libamvgpu.so
     image:
       registry: ghcr.io
