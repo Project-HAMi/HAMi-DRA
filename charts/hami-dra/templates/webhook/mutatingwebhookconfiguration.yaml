@@ -29,6 +29,13 @@ webhooks:
         resources:
           - pods
         scope: '*'
+    # A pod labelled hami.io/skip-dra=true keeps its device plugin resources,
+    # so device plugin and DRA nodes can serve pods of the same namespace.
+    objectSelector:
+      matchExpressions:
+        - key: hami.io/skip-dra
+          operator: NotIn
+          values: ["true"]
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
     failurePolicy: {{ .Values.webhook.config.mutating.failurePolicy | default "Fail" }}
