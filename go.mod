@@ -75,6 +75,8 @@ require (
 )
 
 require (
+	cel.dev/expr v0.25.2 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/go-openapi/swag/cmdutils v0.27.1 // indirect
 	github.com/go-openapi/swag/conv v0.27.1 // indirect
 	github.com/go-openapi/swag/fileutils v0.27.1 // indirect
@@ -86,11 +88,15 @@ require (
 	github.com/go-openapi/swag/stringutils v0.27.1 // indirect
 	github.com/go-openapi/swag/typeutils v0.27.1 // indirect
 	github.com/go-openapi/swag/yamlutils v0.27.1 // indirect
+	github.com/google/cel-go v0.29.2 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.41.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
+	k8s.io/apiserver v0.37.1 // indirect
 	k8s.io/kubelet v0.37.1 // indirect
 	tags.cncf.io/container-device-interface/specs-go v1.1.0 // indirect
 )
