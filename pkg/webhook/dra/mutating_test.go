@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	draCEL "k8s.io/dynamic-resource-allocation/cel"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -78,7 +79,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseUUIDAnnotation: "gpu-999,gpu-888",
 			},
 			wantSelectors: []string{
-				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999","gpu-888"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].uuid) || !(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999","gpu-888"])`,
 			},
 		},
 
@@ -108,7 +109,7 @@ func TestAddAnnotationSelectors(t *testing.T) {
 				constants.NoUseTypeAnnotation: "A100,H100",
 			},
 			wantSelectors: []string{
-				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100","H100"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].productName) || !(device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100","H100"])`,
 			},
 		},
 
@@ -122,9 +123,9 @@ func TestAddAnnotationSelectors(t *testing.T) {
 			},
 			wantSelectors: []string{
 				`device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-123","gpu-456"]`,
-				`!(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].uuid) || !(device.attributes["hami-core-gpu.project-hami.io"].uuid in ["gpu-999"])`,
 				`device.attributes["hami-core-gpu.project-hami.io"].productName in ["A100"]`,
-				`!(device.attributes["hami-core-gpu.project-hami.io"].productName in ["H100"])`,
+				`!has(device.attributes["hami-core-gpu.project-hami.io"].productName) || !(device.attributes["hami-core-gpu.project-hami.io"].productName in ["H100"])`,
 			},
 		},
 		{
@@ -630,6 +631,69 @@ func TestHandleResourceClaimTemplateRollsBackOnFailure(t *testing.T) {
 		"pre-existing template must not be deleted by the rollback")
 }
 
+func TestHandleContainerAMD(t *testing.T) {
+	deviceConfigs, err := (&config.Config{Amd: config.AmdConfig{ReferenceComputeUnits: 304}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client:        fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfigs: deviceConfigs,
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "amd", Namespace: "default",
+		Annotations: map[string]string{
+			constants.AmdUseTypeAnnotation:   "AMD Instinct MI300X",
+			constants.AmdNoUseUUIDAnnotation: "GPU-bad",
+		},
+	}}
+	container := &corev1.Container{
+		Name: "rocm",
+		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			corev1.ResourceName("amd.com/gpu"):      resource.MustParse("2"),
+			corev1.ResourceName("amd.com/gpumem"):   resource.MustParse("4096"),
+			corev1.ResourceName("amd.com/gpucores"): resource.MustParse("25"),
+		}},
+	}
+
+	names, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{"default-amd-rocm-amd"}, names)
+	assert.Empty(t, container.Resources.Limits)
+
+	claim := &resourceapi.ResourceClaim{}
+	require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+	exactly := claim.Spec.Devices.Requests[0].Exactly
+	assert.Equal(t, "gpu.amd.com", exactly.DeviceClassName)
+	assert.Equal(t, int64(2), exactly.Count)
+	mem, cus := exactly.Capacity.Requests["memory"], exactly.Capacity.Requests["computeUnits"]
+	assert.Equal(t, int64(4096)*1024*1024, mem.Value())
+	assert.Equal(t, int64(76), cus.Value())
+	_, hasCores := exactly.Capacity.Requests["cores"]
+	assert.False(t, hasCores, "the AMD driver has no cores capacity")
+	require.Len(t, exactly.Selectors, 3)
+	assert.Equal(t, `device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"`, exactly.Selectors[0].CEL.Expression)
+	assert.Equal(t, `!has(device.attributes["gpu.amd.com"].uuid) || !(device.attributes["gpu.amd.com"].uuid in ["GPU-bad"])`, exactly.Selectors[1].CEL.Expression)
+	assert.Equal(t, `has(device.attributes["gpu.amd.com"].productName) && ["amd_instinct_mi300x"].exists(t, device.attributes["gpu.amd.com"].productName.lowerAscii().contains(t))`, exactly.Selectors[2].CEL.Expression)
+}
+
+func TestHandleContainerAMDNeedsReferenceComputeUnitsForCores(t *testing.T) {
+	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).Build(), DeviceConfigs: deviceConfigs}
+	container := &corev1.Container{Name: "rocm", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+		corev1.ResourceName("amd.com/gpu"):      resource.MustParse("1"),
+		corev1.ResourceName("amd.com/gpucores"): resource.MustParse("25"),
+	}}}
+	_, err = admission.handleContainer(context.Background(), container, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}, nil, false)
+	assert.ErrorContains(t, err, "referenceComputeUnits")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, admission.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "a failed conversion must not leave a claim behind")
+}
+
 func TestHandleUpdateStripsReappliedResources(t *testing.T) {
 	a := &MutatingAdmission{DeviceConfig: defaultNvidiaDeviceConfig()}
 	gpu := corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1"), "nvidia.com/gpumem": resource.MustParse("1000")}
@@ -664,4 +728,184 @@ func TestHandleUpdateStripsReappliedResources(t *testing.T) {
 	resp = a.handleUpdate(req, pod)
 	require.True(t, resp.Allowed)
 	assert.Empty(t, resp.Patches, "nothing to strip on a plain update")
+}
+
+// The AMD driver publishes neither uuid nor, on some cards, productName. An
+// exclusion must still match such a device instead of failing on the lookup.
+func TestExclusionSelectorsMatchDevicesWithoutTheAttribute(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	claim := &resourceapi.ResourceClaim{Spec: resourceapi.ResourceClaimSpec{Devices: resourceapi.DeviceClaim{
+		Requests: []resourceapi.DeviceRequest{cfgs[0].NewPrimaryDeviceRequest()},
+	}}}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+		constants.AmdNoUseUUIDAnnotation: "GPU-bad",
+		constants.AmdNoUseTypeAnnotation: "MI300X",
+	}}}
+	require.NoError(t, (&MutatingAdmission{}).addAnnotationSelectors(claim, pod, cfgs[0]))
+
+	str := func(v string) resourceapi.DeviceAttribute { return resourceapi.DeviceAttribute{StringValue: &v} }
+	matches := func(attrs map[resourceapi.QualifiedName]resourceapi.DeviceAttribute) bool {
+		for _, sel := range claim.Spec.Devices.Requests[0].Exactly.Selectors {
+			result := draCEL.GetCompiler(draCEL.Features{}).CompileCELExpression(sel.CEL.Expression, draCEL.Options{})
+			require.Nil(t, result.Error, sel.CEL.Expression)
+			ok, _, err := result.DeviceMatches(context.Background(), draCEL.Device{Driver: "gpu.amd.com", Attributes: attrs})
+			require.NoError(t, err, sel.CEL.Expression)
+			if !ok {
+				return false
+			}
+		}
+		return true
+	}
+
+	assert.True(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu")}))
+	assert.True(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "uuid": str("GPU-ok"), "productName": str("RX9060XT")}))
+	assert.False(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "uuid": str("GPU-bad")}))
+	assert.False(t, matches(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu"), "productName": str("MI300X")}))
+}
+
+func amdStr(v string) resourceapi.DeviceAttribute {
+	return resourceapi.DeviceAttribute{StringValue: &v}
+}
+
+// selectorsMatch evaluates selectors with the scheduler's CEL environment.
+func selectorsMatch(t *testing.T, selectors []resourceapi.DeviceSelector, dev draCEL.Device) bool {
+	t.Helper()
+	for _, sel := range selectors {
+		result := draCEL.GetCompiler(draCEL.Features{}).CompileCELExpression(sel.CEL.Expression, draCEL.Options{})
+		require.Nil(t, result.Error, sel.CEL.Expression)
+		ok, _, err := result.DeviceMatches(context.Background(), dev)
+		require.NoError(t, err, sel.CEL.Expression)
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// HAMi matches AMD types as case-insensitive parts of the name; the driver
+// publishes the name with "_" for spaces.
+func TestAMDTypeAnnotationsMatchPartsOfTheName(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	matches := func(annotations map[string]string, productName string) bool {
+		claim := &resourceapi.ResourceClaim{Spec: resourceapi.ResourceClaimSpec{Devices: resourceapi.DeviceClaim{
+			Requests: []resourceapi.DeviceRequest{cfgs[0].NewPrimaryDeviceRequest()},
+		}}}
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: annotations}}
+		require.NoError(t, (&MutatingAdmission{}).addAnnotationSelectors(claim, pod, cfgs[0]))
+		attrs := map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")}
+		if productName != "" {
+			attrs["productName"] = amdStr(productName)
+		}
+		return selectorsMatch(t, claim.Spec.Devices.Requests[0].Exactly.Selectors, draCEL.Device{Driver: "gpu.amd.com", Attributes: attrs})
+	}
+	use := func(v string) map[string]string { return map[string]string{constants.AmdUseTypeAnnotation: v} }
+	nouse := func(v string) map[string]string { return map[string]string{constants.AmdNoUseTypeAnnotation: v} }
+
+	assert.True(t, matches(use("RX 9060"), "AMD_Radeon_RX_9060_XT"))
+	assert.True(t, matches(use("AMD Radeon RX 9060 XT"), "AMD_Radeon_RX_9060_XT"))
+	assert.True(t, matches(use("mi300, rx 9060"), "AMD_Radeon_RX_9060_XT"))
+	// The space after a comma is not part of the next name.
+	assert.True(t, matches(use("MI300, AMD Radeon RX 9060"), "AMD_Radeon_RX_9060_XT"))
+	assert.False(t, matches(nouse("MI300, AMD Radeon RX 9060"), "AMD_Radeon_RX_9060_XT"))
+	assert.True(t, matches(use("MI300"), "AMD_Instinct_MI300X"))
+	assert.False(t, matches(use("MI300"), "AMD_Radeon_RX_9060_XT"))
+	assert.False(t, matches(use("RX 9060"), ""), "a device without a name is not chosen")
+	assert.False(t, matches(nouse("rx 9060"), "AMD_Radeon_RX_9060_XT"))
+	assert.True(t, matches(nouse("MI300"), "AMD_Radeon_RX_9060_XT"))
+	assert.True(t, matches(nouse("MI300"), ""))
+}
+
+func TestHandleContainerAMDMemoryPercentage(t *testing.T) {
+	cfgs, err := (&config.Config{Amd: config.AmdConfig{ReferenceComputeUnits: 32}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	device := func(name, typ string, mem int64) resourceapi.Device {
+		return resourceapi.Device{
+			Name:       name,
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr(typ)},
+			Capacity:   map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"memory": {Value: *resource.NewQuantity(mem, resource.BinarySI)}},
+		}
+	}
+	slices := []client.Object{
+		&resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "a"},
+			Devices: []resourceapi.Device{device("gpu-1", "amdgpu", 16304<<20), device("gpu-2", "amdgpu", 16304<<20), device("part-1", "amdgpu-partition", 1000<<20)},
+		}},
+		&resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "b"},
+			Devices: []resourceapi.Device{device("gpu-1", "amdgpu", 196592<<20)},
+		}},
+		&resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "c"}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.nvidia.com", Pool: resourceapi.ResourcePool{Name: "c"},
+			Devices: []resourceapi.Device{device("gpu-0", "amdgpu", 24576<<20)},
+		}},
+	}
+	newAdmission := func(objs ...client.Object) *MutatingAdmission {
+		return &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build(), DeviceConfigs: cfgs}
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pct", Namespace: "default"}}
+	container := func(limits corev1.ResourceList) *corev1.Container {
+		return &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits}}
+	}
+
+	a := newAdmission(slices...)
+	c := container(corev1.ResourceList{
+		"amd.com/gpu":               resource.MustParse("1"),
+		"amd.com/gpumem-percentage": resource.MustParse("25"),
+		"amd.com/gpucores":          resource.MustParse("50"),
+	})
+	names, err := a.handleContainer(context.Background(), c, pod, nil, false)
+	require.NoError(t, err)
+	assert.Empty(t, c.Resources.Limits)
+	claim := &resourceapi.ResourceClaim{}
+	require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+	req := claim.Spec.Devices.Requests[0]
+	assert.Nil(t, req.Exactly)
+	require.Len(t, req.FirstAvailable, 2, "one subrequest per memory size of an amdgpu device")
+	for i, want := range []int64{4076, 49148} {
+		sub := req.FirstAvailable[i]
+		mem, cus := sub.Capacity.Requests["memory"], sub.Capacity.Requests["computeUnits"]
+		assert.Equal(t, want<<20, mem.Value())
+		assert.Equal(t, int64(16), cus.Value())
+		assert.Equal(t, int64(1), sub.Count)
+		assert.Equal(t, "gpu.amd.com", sub.DeviceClassName)
+	}
+	dev := func(mem int64) draCEL.Device {
+		return draCEL.Device{
+			Driver:     "gpu.amd.com",
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+			Capacity:   map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"memory": {Value: *resource.NewQuantity(mem, resource.BinarySI)}},
+		}
+	}
+	assert.True(t, selectorsMatch(t, req.FirstAvailable[0].Selectors, dev(16304<<20)))
+	assert.False(t, selectorsMatch(t, req.FirstAvailable[0].Selectors, dev(196592<<20)))
+	assert.True(t, selectorsMatch(t, req.FirstAvailable[1].Selectors, dev(196592<<20)))
+
+	// An absolute request wins, as in HAMi.
+	c = container(corev1.ResourceList{
+		"amd.com/gpu":               resource.MustParse("1"),
+		"amd.com/gpumem":            resource.MustParse("2000"),
+		"amd.com/gpumem-percentage": resource.MustParse("25"),
+	})
+	names, err = newAdmission(slices...).handleContainer(context.Background(), c, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "abs", Namespace: "default"}}, nil, false)
+	require.NoError(t, err)
+	assert.Empty(t, c.Resources.Limits)
+	assert.Len(t, names, 1)
+
+	for _, tc := range []struct {
+		pct  string
+		objs []client.Object
+		err  string
+	}{
+		{"0", slices, "must be between 1 and 100"},
+		{"101", slices, "must be between 1 and 100"},
+		{"50", nil, "no gpu.amd.com devices are published"},
+	} {
+		c = container(corev1.ResourceList{"amd.com/gpu": resource.MustParse("1"), "amd.com/gpumem-percentage": resource.MustParse(tc.pct)})
+		_, err = newAdmission(tc.objs...).handleContainer(context.Background(), c, pod, nil, false)
+		assert.ErrorContains(t, err, tc.err, tc.pct)
+	}
 }
