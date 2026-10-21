@@ -91,7 +91,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsBindAddress, "metrics-bind-address", ":8080", "The TCP address that the controller should bind to for serving prometheus metrics(e.g. 127.0.0.1:8080, :8080). It can be set to \"0\" to disable the metrics serving.")
 	flags.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", ":8000", "The TCP address that the controller should bind to for serving health probes(e.g. 127.0.0.1:8000, :8000)")
 	flags.StringVar(&o.DeviceConfigFile, "device-config-file", "device-config.yaml", "The path to the device config file.")
-	flags.StringSliceVar(&o.DeviceVendors, "device-vendors", nil, "Device vendors for DRA conversion (nvidia, hygon, ascend). Overrides vendors in device-config.yaml when set.")
+	flags.StringSliceVar(&o.DeviceVendors, "device-vendors", nil, "Device vendors for DRA conversion (nvidia, hygon, amd, ascend). Overrides vendors in device-config.yaml when set.")
 	flags.BoolVar(&o.ResourceClaimTemplate, "resource-claim-template", false, "Create a ResourceClaimTemplate instead of a ResourceClaim for every converted Pod. Kubernetes generates the ResourceClaim from the template.")
 }
 

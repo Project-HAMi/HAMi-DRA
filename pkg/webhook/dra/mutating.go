@@ -21,13 +21,17 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
@@ -73,6 +77,10 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	needPatch := false
 	rcNameList := []string{}
 	asTemplate := a.ResourceClaimTemplate
+	warnings := ExtendedResourceWarnings(ctx, a.Client, a.configs(), pod.Spec.Containers)
+	for _, w := range warnings {
+		klog.Warningf("Pod(%s/%s): %s", req.Namespace, pod.Name, w)
+	}
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
@@ -110,7 +118,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		a.deleteResourceClaims(ctx, pod.Namespace, rcNameList, asTemplate)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
 }
 
 // handleUpdate strips the converted resources again when a pod that already
@@ -136,7 +144,10 @@ func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfi
 			continue
 		}
 		for _, cfg := range cfgs {
-			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName} {
+			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName, cfg.ResourceMemoryPercentageName} {
+				if name == "" {
+					continue
+				}
 				_, inLimits := res.Limits[corev1.ResourceName(name)]
 				_, inRequests := res.Requests[corev1.ResourceName(name)]
 				if inLimits || inRequests {
@@ -215,17 +226,34 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 				cleanup()
 				return nil, err
 			}
-			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["cores"] = converted
+			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests[resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())] = converted
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
 		}
+		_, hasMem := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]
 		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
 			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = cfg.ConvertMemory(memQty)
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
+		}
+		var pctQty *resource.Quantity
+		if pctName := corev1.ResourceName(cfg.ResourceMemoryPercentageName); pctName != "" {
+			if q, ok := container.Resources.Limits[pctName]; ok {
+				a.removeResource(container, pctName)
+				// As in HAMi, an absolute memory request wins over a percentage.
+				if !hasMem {
+					pctQty = &q
+				}
+			}
 		}
 
 		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
 			cleanup()
 			return nil, err
+		}
+		if pctQty != nil {
+			if err := a.requestMemoryPercentage(ctx, resourceclaim, cfg, *pctQty); err != nil {
+				cleanup()
+				return nil, err
+			}
 		}
 
 		obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
@@ -342,13 +370,111 @@ func (a *MutatingAdmission) addAnnotationSelectors(resourceclaim *resourceapi.Re
 		if len(literals) == 0 {
 			return fmt.Errorf("annotation %s has no usable value: %q", sel.annotation, raw)
 		}
-		expr := fmt.Sprintf(`device.attributes[%q].%s in [%s]`, draDriverName, sel.field, strings.Join(literals, ","))
-		if sel.negate {
-			expr = "!(" + expr + ")"
+		attr := fmt.Sprintf(`device.attributes[%q].%s`, draDriverName, sel.field)
+		match := fmt.Sprintf(`%s in [%s]`, attr, strings.Join(literals, ","))
+		substring := sel.field == "productName" && cfg.TypeSubstringMatch
+		if substring {
+			var parts []string
+			for _, v := range strings.Split(raw, ",") {
+				if v = strings.TrimSpace(v); v != "" {
+					parts = append(parts, strconv.Quote(typeNamePart(v)))
+				}
+			}
+			match = fmt.Sprintf(`[%s].exists(t, %s.lowerAscii().contains(t))`, strings.Join(parts, ","), attr)
+		}
+		expr := match
+		switch {
+		case sel.negate:
+			// A device without the attribute is not on the exclusion list; looking
+			// it up anyway is a CEL runtime error that blocks the allocation.
+			expr = "!has(" + attr + ") || !(" + match + ")"
+		case substring:
+			expr = "has(" + attr + ") && " + match
 		}
 		exactly.Selectors = append(exactly.Selectors, resourceapi.DeviceSelector{
 			CEL: &resourceapi.CELDeviceSelector{Expression: expr},
 		})
 	}
 	return nil
+}
+
+// typeNamePart turns a type annotation into the form the AMD driver
+// publishes productName in, lower-cased: spaces become "_" and parentheses
+// are dropped, so "Radeon RX 9060" finds "AMD_Radeon_RX_9060_XT".
+func typeNamePart(raw string) string {
+	return strings.NewReplacer(" ", "_", "(", "", ")", "").Replace(strings.ToLower(raw))
+}
+
+// requestMemoryPercentage turns a share of each device's memory into one
+// subrequest per memory size the driver publishes, since a claim can only
+// request an absolute capacity. The scheduler uses the first subrequest a
+// device fits, so each device gets the share of its own memory.
+func (a *MutatingAdmission) requestMemoryPercentage(ctx context.Context, claim *resourceapi.ResourceClaim, cfg *config.DRADeviceConfig, pctQty resource.Quantity) error {
+	pct := pctQty.Value()
+	if pct < 1 || pct > 100 {
+		return fmt.Errorf("%s must be between 1 and 100, got %s", cfg.ResourceMemoryPercentageName, pctQty.String())
+	}
+	sizes, err := a.deviceMemorySizes(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if len(sizes) == 0 {
+		return fmt.Errorf("no %s devices are published, so %s cannot be sized", cfg.EffectiveDraDriverName(), cfg.ResourceMemoryPercentageName)
+	}
+	if len(sizes) > resourceapi.FirstAvailableDeviceRequestMaxSize {
+		return fmt.Errorf("%s devices come in %d memory sizes, %s supports at most %d", cfg.EffectiveDraDriverName(), len(sizes), cfg.ResourceMemoryPercentageName, resourceapi.FirstAvailableDeviceRequestMaxSize)
+	}
+
+	req := &claim.Spec.Devices.Requests[0]
+	exactly := req.Exactly
+	for i, size := range sizes {
+		// HAMi sizes the share in whole MiB, at least 1.
+		mib := max((size>>20)*pct/100, 1)
+		requests := maps.Clone(exactly.Capacity.Requests)
+		requests["memory"] = *resource.NewQuantity(mib<<20, resource.BinarySI)
+		req.FirstAvailable = append(req.FirstAvailable, resourceapi.DeviceSubRequest{
+			Name:            fmt.Sprintf("mem-%d", i),
+			DeviceClassName: exactly.DeviceClassName,
+			Selectors: append(slices.Clone(exactly.Selectors), resourceapi.DeviceSelector{CEL: &resourceapi.CELDeviceSelector{
+				Expression: fmt.Sprintf(`device.capacity[%q].memory.compareTo(quantity(%q)) == 0`, cfg.EffectiveDraDriverName(), strconv.FormatInt(size, 10)),
+			}}),
+			AllocationMode: exactly.AllocationMode,
+			Count:          exactly.Count,
+			Tolerations:    exactly.Tolerations,
+			Capacity:       &resourceapi.CapacityRequirements{Requests: requests},
+		})
+	}
+	req.Exactly = nil
+	return nil
+}
+
+// deviceMemorySizes returns the distinct memory capacities, in bytes, of the
+// devices of cfg's driver and type in the published ResourceSlices.
+func (a *MutatingAdmission) deviceMemorySizes(ctx context.Context, cfg *config.DRADeviceConfig) ([]int64, error) {
+	// The cached List waits for the informer to sync; bound it like
+	// ExtendedResourceWarnings does so admission can't hang on it.
+	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	list := &resourceapi.ResourceSliceList{}
+	if err := a.Client.List(listCtx, list); err != nil {
+		return nil, fmt.Errorf("listing ResourceSlices to size %s: %w", cfg.ResourceMemoryPercentageName, err)
+	}
+	seen := map[int64]bool{}
+	var sizes []int64
+	for _, rs := range list.Items {
+		if rs.Spec.Driver != cfg.EffectiveDraDriverName() {
+			continue
+		}
+		for _, d := range rs.Spec.Devices {
+			if t := d.Attributes["type"].StringValue; t == nil || *t != cfg.DeviceType {
+				continue
+			}
+			if c, ok := d.Capacity["memory"]; ok && !seen[c.Value.Value()] {
+				seen[c.Value.Value()] = true
+				sizes = append(sizes, c.Value.Value())
+			}
+		}
+	}
+	slices.Sort(sizes)
+	return sizes, nil
 }
