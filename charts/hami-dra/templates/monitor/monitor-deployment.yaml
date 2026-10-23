@@ -29,6 +29,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command:
             - /bin/monitor
             - --v={{ .Values.monitor.logLevel | default 2 }}
