@@ -36,6 +36,16 @@ const (
 	HygonUseTypeAnnotation   = "hygon.com/use-hcutype"
 	HygonNoUseTypeAnnotation = "hygon.com/nouse-hcutype"
 
+	// AMD DRA driver (ROCm/k8s-gpu-dra-driver). It publishes a whole GPU as type
+	// "amdgpu" with the capacities memory (bytes) and computeUnits.
+	AmdDraDriver  = "gpu.amd.com"
+	AmdDeviceType = "amdgpu"
+
+	AmdUseUUIDAnnotation   = "amd.com/use-gpu-uuid"
+	AmdNoUseUUIDAnnotation = "amd.com/nouse-gpu-uuid"
+	AmdUseTypeAnnotation   = "amd.com/use-gputype"
+	AmdNoUseTypeAnnotation = "amd.com/nouse-gputype"
+
 	// Ascend DRA driver (ascend-dra-driver). HAMivNPUCore is the currently
 	// validated allocation mode; traditional full-card / vNPU DeviceClasses
 	// can be added later via firstAvailable without changing these names.
@@ -57,5 +67,6 @@ const (
 	DeviceAttributeBrand        = "brand"
 	DeviceAttributeProductName  = "productName"
 	DeviceCapacityCores         = "cores"
+	DeviceCapacityComputeUnits  = "computeUnits"
 	DeviceCapacityMemory        = "memory"
 )
