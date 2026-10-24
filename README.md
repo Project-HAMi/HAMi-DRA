@@ -1,6 +1,6 @@
-# HAMi DRA Webhook
+# HAMi-DRA
 
-A Kubernetes mutating webhook that converts GPU device resources to Dynamic Resource Allocation (DRA) ResourceClaims.
+A Kubernetes mutating webhook that converts GPU device resources to Dynamic Resource Allocation (DRA) ResourceClaims, with an optional metrics monitor and a fake DRA driver for testing.
 
 ## Overview
 
@@ -11,19 +11,21 @@ This webhook automatically transforms Pod specifications that request GPU resour
 - **Automatic Resource Conversion**: Converts GPU resource requests to ResourceClaims
 - **Resource Cleanup**: Automatically removes GPU resources from Pod specs and creates corresponding ResourceClaims
 - **Annotation Support**: Supports device selection via Pod annotations (UUID, device type)
+- **Multi-vendor**: NVIDIA, Hygon HCU, AMD and Ascend NPU in one deployment
 - **Metrics Monitoring**: Optional monitor component that collects and exposes GPU resource metrics via Prometheus
+- **Fake Driver**: A fake DRA driver for testing without GPU hardware, see [docs/fake-dra-driver.md](./docs/fake-dra-driver.md)
 
 ## Installation
 
 ### Prerequisites
 
-- Kubernetes version >= 1.34 with DRA Consumable Capacity [featuregate](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) enabled
+- Kubernetes version >= 1.34 with the `DRAConsumableCapacity` [featuregate](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) enabled (alpha in 1.34, beta and on by default since 1.36)
 - [CDI](https://github.com/cncf-tags/container-device-interface?tab=readme-ov-file#how-to-configure-cdi) must be enabled in the underlying container runtime (such as containerd or CRI-O).
 - NVIDIA GPU Driver 440 or later
 
 ### Configure and install with Helm
 
-You need [cert-manager](https://cert-manager.io/docs/installation/) installed before installing the webhook. If you don't want to use cert-manager, set `certs.certManager.enabled=false` and provide your own certificate via `certs.custom.crt` and `certs.custom.key`.
+You need [cert-manager](https://cert-manager.io/docs/installation/) installed before installing the webhook. If you don't want to use cert-manager, set `certs.certManager.enabled=false` and provide your own certificate via `certs.custom.crt` and `certs.custom.key`, and the CA that signed it (base64 encoded PEM) via `certs.custom.caBundle` unless the API server already trusts it.
 
 Add the HAMi-DRA Helm repository:
 ```bash
@@ -74,10 +76,11 @@ deviceVendors:
   - nvidia
   - hygon
   - ascend
+  - amd
 ```
 
-The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md).
-The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend`.
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md). For AMD, add `amd` to `deviceVendors`, enable `drivers.amd`, and set `amdReferenceComputeUnits` (see the comments in `charts/hami-dra/values.yaml`).
+The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd`.
 
 ### ResourceClaimTemplate
 

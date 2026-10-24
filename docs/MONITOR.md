@@ -43,7 +43,7 @@ monitor:
 - `healthProbeBindAddress`: Address and port for health probe endpoints (default: `:8000`)
 - `kubeAPIQPS`: QPS limit for Kubernetes API client (default: `40.0`)
 - `kubeAPIBurst`: Burst limit for Kubernetes API client (default: `60`)
-- `collectInterval`: Interval for metrics collection (default: `30s`)
+- `collectInterval`: Interval of the monitor's keep-alive tick (default: `30s`). Metrics themselves are collected on each Prometheus scrape, so this does not change metric freshness
 
 ### Service Configuration
 
@@ -263,5 +263,5 @@ The monitor uses Kubernetes informers to watch ResourceSlice and ResourceClaim r
 - **Cache Sync**: The monitor waits for ResourceSlice cache to sync before processing ResourceClaim events to ensure data consistency
 - **Concurrency**: Uses node-level locking to minimize contention when updating device usage
 - **API Rate Limiting**: Configure `kubeAPIQPS` and `kubeAPIBurst` to control API server load
-- **Metrics Collection**: Metrics are collected on-demand when Prometheus scrapes the endpoint, not on a fixed interval
+- **Metrics Collection**: Metrics are collected on-demand when Prometheus scrapes the endpoint, not on a fixed interval. `collectInterval` only drives a keep-alive log tick
 

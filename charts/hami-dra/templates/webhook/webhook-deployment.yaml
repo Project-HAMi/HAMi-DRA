@@ -14,6 +14,11 @@ spec:
     metadata:
       labels:
         {{- include "hami-dra-webhook.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/device-config: {{ include (print $.Template.BasePath "/webhook/device-config.yaml") . | sha256sum }}
+        {{- if not .Values.certs.certManager.enabled }}
+        checksum/tls: {{ include (print $.Template.BasePath "/webhook/cert-secret.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       {{- include "hami.dra.webhook.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "hami.dra.webhook.fullname" . }}
@@ -58,6 +63,22 @@ spec:
           resources:
             {{- toYaml .Values.webhook.resources | nindent 12 }}
           {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: device-config
               mountPath: /device-config.yaml

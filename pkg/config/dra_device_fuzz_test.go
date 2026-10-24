@@ -71,11 +71,15 @@ func FuzzConvertMemory(f *testing.F) {
 	f.Fuzz(func(t *testing.T, qtyStr string) {
 		qty := parseReasonableQuantity(t, qtyStr)
 		cfg := &DRADeviceConfig{}
-		converted := cfg.ConvertMemory(qty)
-		// The MiB-to-bytes invariant only holds while the product fits in
-		// int64; ConvertMemory silently overflows beyond that.
-		if qty.Value() > math.MaxInt64/(1024*1024) {
-			t.Skip()
+		converted, err := cfg.ConvertMemory(qty)
+		if qty.Value() < 0 || qty.Value() > math.MaxInt64/(1024*1024) {
+			if err == nil {
+				t.Errorf("ConvertMemory(%s) should reject an out of range value", qtyStr)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("ConvertMemory(%s) failed: %v", qtyStr, err)
 		}
 		if want := qty.Value() * 1024 * 1024; converted.Value() != want {
 			t.Errorf("ConvertMemory(%s) = %d, want %d", qtyStr, converted.Value(), want)

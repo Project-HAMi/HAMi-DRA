@@ -24,6 +24,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -67,4 +68,36 @@ func TestValidatingHandleDryRunKeepsTemplates(t *testing.T) {
 	assert.True(t, resp.Allowed)
 	assert.NoError(t, fakeClient.Get(context.Background(),
 		client.ObjectKey{Namespace: "default", Name: "default-worker-main"}, &resourceapi.ResourceClaimTemplate{}))
+}
+
+func TestValidatingHandleKeepsUserManagedTemplates(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	own := &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "default-j-main", Namespace: "default"}}
+	shared := &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "team-shared", Namespace: "default"}}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(own, shared).Build()
+	job := &vcv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"}},
+		Spec: vcv1alpha1.JobSpec{Tasks: []vcv1alpha1.TaskSpec{{
+			Name: "worker",
+			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+				ResourceClaims: []corev1.PodResourceClaim{{Name: "default-j-main"}, {Name: "team-shared"}},
+			}},
+		}}},
+	}
+	raw, err := json.Marshal(job)
+	require.NoError(t, err)
+	req := admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Delete,
+		Namespace: "default",
+		OldObject: runtime.RawExtension{Raw: raw},
+	}}
+
+	resp := (&ValidatingAdmission{Client: fakeClient}).Handle(context.Background(), req)
+	require.True(t, resp.Allowed)
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "default-j-main"}, &resourceapi.ResourceClaimTemplate{})
+	assert.True(t, apierrors.IsNotFound(err), "webhook-generated template should be deleted")
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "team-shared"}, &resourceapi.ResourceClaimTemplate{})
+	assert.NoError(t, err, "user-managed template must survive job deletion")
 }
