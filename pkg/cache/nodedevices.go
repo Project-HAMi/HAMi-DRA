@@ -19,6 +19,7 @@ package cache
 import (
 	"fmt"
 	"maps"
+	"sort"
 	"sync"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -35,8 +36,12 @@ type NodeDevices struct {
 }
 
 type NodeDeviceInfo struct {
-	mu      sync.RWMutex
+	mu sync.RWMutex
+	// Devices is the concatenation of the devices of every ResourceSlice on the node.
 	Devices []*NodeDevice
+	// slices keeps the devices per ResourceSlice name, since a node can publish
+	// several slices (pools over 128 devices, several drivers, generation bumps).
+	slices map[string][]*NodeDevice
 }
 
 type ClaimsCache struct {
@@ -79,20 +84,6 @@ func NewNodeDevices() *NodeDevices {
 			Claims: make(map[string]*DeviceAllocation),
 		},
 	}
-}
-
-func (n *NodeDevices) getOrCreateNodeInfo(nodeName string) *NodeDeviceInfo {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	nodeInfo, ok := n.Nodes[nodeName]
-	if !ok {
-		nodeInfo = &NodeDeviceInfo{
-			Devices: make([]*NodeDevice, 0),
-		}
-		n.Nodes[nodeName] = nodeInfo
-	}
-	return nodeInfo
 }
 
 func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeDevice {
@@ -164,6 +155,67 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 		deviceCopies[i] = &deviceCopy
 	}
 	return deviceCopies
+}
+
+// setSliceDevices stores the devices of one ResourceSlice on a node, or removes
+// the slice when devices is nil, then rebuilds the node's device list and
+// recomputes usage from the cached claims. A node with no slices left is dropped.
+func (n *NodeDevices) setSliceDevices(nodeName, sliceName string, devices []*NodeDevice) {
+	claims := n.GetAllClaims()
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	info, ok := n.Nodes[nodeName]
+	if !ok {
+		if devices == nil {
+			return
+		}
+		info = &NodeDeviceInfo{}
+		n.Nodes[nodeName] = info
+	}
+	info.mu.Lock()
+	defer info.mu.Unlock()
+
+	if info.slices == nil {
+		info.slices = make(map[string][]*NodeDevice)
+	}
+	if devices == nil {
+		delete(info.slices, sliceName)
+	} else {
+		info.slices[sliceName] = devices
+	}
+	if len(info.slices) == 0 {
+		delete(n.Nodes, nodeName)
+		return
+	}
+
+	names := make([]string, 0, len(info.slices))
+	for name := range info.slices {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	info.Devices = make([]*NodeDevice, 0)
+	for _, name := range names {
+		info.Devices = append(info.Devices, info.slices[name]...)
+	}
+
+	// Usage is derived from the claims, so claims seen before their slice, or
+	// before a slice was recreated, are counted as soon as the devices exist.
+	for _, alloc := range claims {
+		if alloc.NodeName != nodeName {
+			continue
+		}
+		for _, result := range alloc.AllocationResults {
+			for _, device := range info.Devices {
+				if device.Name == result.DeviceName {
+					device.CoresUsed += result.Cores
+					device.MemoryUsed += result.Memory
+					break
+				}
+			}
+		}
+	}
 }
 
 func (n *NodeDevices) GetAllNodes() []string {

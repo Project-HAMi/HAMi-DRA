@@ -231,7 +231,12 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		}
 		_, hasMem := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]
 		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
-			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = cfg.ConvertMemory(memQty)
+			memory, err := cfg.ConvertMemory(memQty)
+			if err != nil {
+				cleanup()
+				return nil, err
+			}
+			resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memory
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
 		}
 		var pctQty *resource.Quantity

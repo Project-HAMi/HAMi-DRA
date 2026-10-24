@@ -18,6 +18,7 @@ package config
 
 import (
 	"k8s.io/apimachinery/pkg/api/resource"
+	"math"
 	"testing"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/constants"
@@ -64,8 +65,22 @@ func TestConvertMemoryMiB(t *testing.T) {
 	assert.NoError(t, err)
 	cfg := cfgs[0]
 
-	converted := cfg.ConvertMemory(*resource.NewQuantity(2000, resource.DecimalSI))
+	converted, err := cfg.ConvertMemory(*resource.NewQuantity(2000, resource.DecimalSI))
+	assert.NoError(t, err)
 	assert.Equal(t, int64(2000*1024*1024), converted.Value())
+}
+
+func TestConvertMemoryRejectsOverflow(t *testing.T) {
+	cfg := &DRADeviceConfig{}
+	_, err := cfg.ConvertMemory(*resource.NewQuantity(math.MaxInt64/(1024*1024)+1, resource.DecimalSI))
+	assert.Error(t, err)
+	_, err = cfg.ConvertMemory(*resource.NewQuantity(-1, resource.DecimalSI))
+	assert.Error(t, err)
+}
+
+func TestNvidiaKeepsMemoryPercentageName(t *testing.T) {
+	cfg := draDeviceFromNvidia(&NvidiaConfig{ResourceMemoryPercentageName: "nvidia.com/gpumem-percentage"})
+	assert.Equal(t, "nvidia.com/gpumem-percentage", cfg.ResourceMemoryPercentageName)
 }
 
 func TestDRADeviceAscendDefaults(t *testing.T) {
