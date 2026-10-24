@@ -1,7 +1,7 @@
 header:
   schema-version: 2.0.0
-  last-updated: '2026-08-04'
-  last-reviewed: '2026-08-04'
+  last-updated: '2026-10-23'
+  last-reviewed: '2026-10-23'
   url: https://github.com/Project-HAMi/HAMi-DRA/blob/main/SECURITY-INSIGHTS.yml
   comment: |
     Security metadata for the HAMi-DRA project, following the OpenSSF
@@ -76,7 +76,7 @@ repository:
       self:
         comment: |
           Dependencies are monitored with Dependabot and scanned in CI
-          (CodeQL, govulncheck). Go toolchain and module updates are
+          (CodeQL, govulncheck, Trivy image scanning, OpenSSF Scorecard). Go toolchain and module updates are
           applied promptly when vulnerabilities are published.
     tools:
       - name: Dependabot
@@ -103,6 +103,43 @@ repository:
         results: {}
         comment: |
           Static analysis on pull requests via GitHub Actions.
+      - name: govulncheck
+        type: SCA
+        version: v1.7.0
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          Go vulnerability database check on every pull request.
+      - name: Trivy
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          Container image vulnerability scanning for the webhook, monitor
+          and fake-driver images, results uploaded as SARIF.
+      - name: OpenSSF Scorecard
+        type: other
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          Supply chain posture checks, results uploaded as SARIF.
       - name: GitHub secret scanning
         type: secret-scanning
         version: latest
