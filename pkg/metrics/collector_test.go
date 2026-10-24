@@ -17,10 +17,13 @@ limitations under the License.
 package metrics
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Project-HAMi/HAMi-DRA/pkg/cache"
+	"github.com/Project-HAMi/HAMi-DRA/pkg/config"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -32,6 +35,7 @@ func newTestCollector(withDevice, legacy bool) *Collector {
 			Devices: []*cache.NodeDevice{
 				{
 					Name:        "gpu0",
+					Driver:      "hami-core-gpu.project-hami.io",
 					UUID:        "uuid-1",
 					Brand:       "NVIDIA",
 					ProductName: "V100",
@@ -50,23 +54,23 @@ func newTestCollector(withDevice, legacy bool) *Collector {
 			{Namespace: "default", DeviceName: "gpu0", Cores: 50, Memory: 8388608},
 		},
 	}
-	return NewCollector(c, legacy)
+	return NewCollector(c, legacy, (&config.Config{}).DeviceTypes())
 }
 
 func TestCollect_NodeMetrics(t *testing.T) {
 	want := `
 # HELP hami_dra_gpu_memory_limit_bytes Device memory limit for a certain GPU
 # TYPE hami_dra_gpu_memory_limit_bytes gauge
-hami_dra_gpu_memory_limit_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 16777216
+hami_dra_gpu_memory_limit_bytes{device_index="0",device_name="gpu0",device_type="NVIDIA-V100",device_uuid="uuid-1",node="node1"} 16777216
 # HELP hami_dra_gpu_core_limit_ratio Device core limit for a certain GPU
 # TYPE hami_dra_gpu_core_limit_ratio gauge
-hami_dra_gpu_core_limit_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 1
+hami_dra_gpu_core_limit_ratio{device_index="0",device_name="gpu0",device_type="NVIDIA-V100",device_uuid="uuid-1",node="node1"} 1
 # HELP hami_dra_gpu_memory_allocated_bytes Device memory allocated for a certain GPU
 # TYPE hami_dra_gpu_memory_allocated_bytes gauge
-hami_dra_gpu_memory_allocated_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 8388608
+hami_dra_gpu_memory_allocated_bytes{device_index="0",device_name="gpu0",device_type="NVIDIA-V100",device_uuid="uuid-1",node="node1"} 8388608
 # HELP hami_dra_gpu_core_allocated_ratio Device core allocated for a certain GPU
 # TYPE hami_dra_gpu_core_allocated_ratio gauge
-hami_dra_gpu_core_allocated_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1"} 0.5
+hami_dra_gpu_core_allocated_ratio{device_index="0",device_name="gpu0",device_type="NVIDIA-V100",device_uuid="uuid-1",node="node1"} 0.5
 `
 	names := []string{
 		"hami_dra_gpu_memory_limit_bytes",
@@ -83,10 +87,10 @@ func TestCollect_PodMetrics(t *testing.T) {
 	want := `
 # HELP hami_dra_vgpu_memory_allocated_bytes vGPU Device memory allocated for a container
 # TYPE hami_dra_vgpu_memory_allocated_bytes gauge
-hami_dra_vgpu_memory_allocated_bytes{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 8388608
+hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 8388608
 # HELP hami_dra_vgpu_core_allocated_ratio vGPU Device core allocated for a container
 # TYPE hami_dra_vgpu_core_allocated_ratio gauge
-hami_dra_vgpu_core_allocated_ratio{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 0.5
+hami_dra_vgpu_core_allocated_ratio{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 0.5
 `
 	names := []string{
 		"hami_dra_vgpu_memory_allocated_bytes",
@@ -94,6 +98,95 @@ hami_dra_vgpu_core_allocated_ratio{devicebrand="NVIDIA",deviceidx="0",devicename
 	}
 	if err := testutil.CollectAndCompare(newTestCollector(true, false), strings.NewReader(want), names...); err != nil {
 		t.Errorf("pod metrics mismatch: %v", err)
+	}
+}
+
+// newPodTestCollector puts each allocation in its own claim on node1, all
+// held by pod1. Legacy metrics are on, as in the chart default.
+func newPodTestCollector(devices []*cache.NodeDevice, allocations []*cache.AllocationResult) *Collector {
+	c := cache.NewCacheWithClient(fake.NewSimpleClientset())
+	c.NodeDevices.Nodes["node1"] = &cache.NodeDeviceInfo{Devices: devices}
+	for i, allocation := range allocations {
+		c.NodeDevices.Claims.Claims[fmt.Sprintf("default/claim%d", i+1)] = &cache.DeviceAllocation{
+			NodeName:          "node1",
+			UsedBy:            []string{"pod1"},
+			AllocationResults: []*cache.AllocationResult{allocation},
+		}
+	}
+	return NewCollector(c, true, (&config.Config{}).DeviceTypes())
+}
+
+func TestCollect_PodMetricsSumClaimsOnSameDevice(t *testing.T) {
+	// pod1 has two claims on gpu0 and one on gpu1
+	col := newPodTestCollector(
+		[]*cache.NodeDevice{
+			{Name: "gpu0", UUID: "uuid-1", Brand: "NVIDIA", ProductName: "V100"},
+			{Name: "gpu1", UUID: "uuid-2", Brand: "NVIDIA", ProductName: "V100"},
+		},
+		[]*cache.AllocationResult{
+			{Namespace: "default", DeviceName: "gpu0", Cores: 50, Memory: 8388608},
+			{Namespace: "default", DeviceName: "gpu0", Cores: 20, Memory: 4194304},
+			{Namespace: "default", DeviceName: "gpu1", Cores: 10, Memory: 2097152},
+		},
+	)
+	want := `
+# HELP hami_dra_vgpu_memory_allocated_bytes vGPU Device memory allocated for a container
+# TYPE hami_dra_vgpu_memory_allocated_bytes gauge
+hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 12582912
+hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-2",namespace="default",node="node1",pod="pod1"} 2097152
+# HELP hami_dra_vgpu_core_allocated_ratio vGPU Device core allocated for a container
+# TYPE hami_dra_vgpu_core_allocated_ratio gauge
+hami_dra_vgpu_core_allocated_ratio{device_uuid="uuid-1",namespace="default",node="node1",pod="pod1"} 0.7
+hami_dra_vgpu_core_allocated_ratio{device_uuid="uuid-2",namespace="default",node="node1",pod="pod1"} 0.1
+# HELP vGPUDeviceMemoryAllocated vGPU Device memory allocated for a container
+# TYPE vGPUDeviceMemoryAllocated gauge
+vGPUDeviceMemoryAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 12
+vGPUDeviceMemoryAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",deviceproductname="V100",deviceuuid="uuid-2",nodeid="node1",podname="pod1",podnamespace="default"} 2
+# HELP vGPUDeviceCoreAllocated vGPU Device core allocated for a container
+# TYPE vGPUDeviceCoreAllocated gauge
+vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="0",devicename="gpu0",deviceproductname="V100",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 70
+vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",deviceproductname="V100",deviceuuid="uuid-2",nodeid="node1",podname="pod1",podnamespace="default"} 10
+`
+	names := []string{
+		"hami_dra_vgpu_memory_allocated_bytes",
+		"hami_dra_vgpu_core_allocated_ratio",
+		"vGPUDeviceMemoryAllocated",
+		"vGPUDeviceCoreAllocated",
+	}
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), names...); err != nil {
+		t.Errorf("pod metrics mismatch: %v", err)
+	}
+}
+
+func TestCollect_PodMetricsSkipDeviceWithoutUUID(t *testing.T) {
+	// pod1 holds two devices that have no uuid attribute
+	col := newPodTestCollector(
+		[]*cache.NodeDevice{
+			{Name: "gpu0", Brand: "NVIDIA", ProductName: "V100"},
+			{Name: "gpu1", Brand: "NVIDIA", ProductName: "V100"},
+		},
+		[]*cache.AllocationResult{
+			{Namespace: "default", DeviceName: "gpu0", Cores: 50, Memory: 8388608},
+			{Namespace: "default", DeviceName: "gpu1", Cores: 10, Memory: 2097152},
+		},
+	)
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(col)
+	for name, want := range map[string]int{
+		// both would be {device_uuid=""}, so they are not exported
+		"hami_dra_vgpu_memory_allocated_bytes": 0,
+		"hami_dra_vgpu_core_allocated_ratio":   0,
+		// legacy metrics still tell the devices apart by devicename
+		"vGPUDeviceMemoryAllocated": 2,
+		"vGPUDeviceCoreAllocated":   2,
+	} {
+		got, err := testutil.GatherAndCount(reg, name)
+		if err != nil {
+			t.Fatalf("scrape failed: %v", err)
+		}
+		if got != want {
+			t.Errorf("%s: got %d series, want %d", name, got, want)
+		}
 	}
 }
 

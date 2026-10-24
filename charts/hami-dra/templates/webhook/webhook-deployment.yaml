@@ -14,6 +14,8 @@ spec:
     metadata:
       labels:
         {{- include "hami-dra-webhook.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/device-config: {{ include (print $.Template.BasePath "/webhook/device-config.yaml") . | sha256sum }}
     spec:
       {{- include "hami.dra.webhook.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "hami.dra.webhook.fullname" . }}
