@@ -109,7 +109,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: hami-dra-e2e
-          node_image: kindest/node:v1.34.0
+          node_image: kindest/node:v1.37.0
 
       - name: Install cert-manager
         run: |
@@ -150,7 +150,7 @@ jobs:
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: hami-dra-e2e
-          node_image: kindest/node:v1.34.0
+          node_image: kindest/node:v1.37.0
 
       - name: Load E2E images
         run: |

@@ -299,7 +299,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/hami-dra-fake-driver
-      tag: "latest"
+      tag: "v0.2.3"
       pullPolicy: IfNotPresent
       pullSecrets: []
     resources:
