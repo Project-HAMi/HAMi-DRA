@@ -25,10 +25,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// coreScale converts the 0-100 core accounting into the 0-1 fraction
-// that a Prometheus _ratio suffix promises.
-const coreScale = 100
-
 type Collector struct {
 	cache       *cache.Cache
 	legacy      bool
@@ -96,7 +92,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUCoreLimitDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresTotal)/coreScale,
+				device.CoreRatio(device.CoresTotal),
 				nodeName, device.UUID, deviceIdx,
 				device.Name, deviceType,
 			)
@@ -114,7 +110,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(
 				nodevGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresUsed)/coreScale,
+				device.CoreRatio(device.CoresUsed),
 				nodeName, device.UUID, deviceIdx,
 				device.Name, deviceType,
 			)
@@ -136,7 +132,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(
 				legacyNodevGPUCoreLimitDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresTotal),
+				device.CoreRatio(device.CoresTotal)*100,
 				nodeName, device.UUID, deviceIdx,
 				device.Name, device.Brand, device.ProductName,
 			)
@@ -154,7 +150,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(
 				legacyNodevGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
-				float64(device.CoresUsed),
+				device.CoreRatio(device.CoresUsed)*100,
 				nodeName, device.UUID, deviceIdx,
 				device.Name, device.Brand, device.ProductName,
 			)
@@ -181,7 +177,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(
 				podvGPUCoreAllocatedDesc,
 				prometheus.GaugeValue,
-				float64(pd.cores)/coreScale,
+				pd.device.CoreRatio(pd.cores),
 				pd.node,
 				pd.device.UUID,
 				pd.namespace,

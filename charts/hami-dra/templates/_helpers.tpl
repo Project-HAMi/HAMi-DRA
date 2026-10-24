@@ -18,6 +18,14 @@
 {{ include "common.images.pullSecrets" (dict "images" (list .Values.drivers.nvidia.image) "global" .Values.global) }}
 {{- end -}}
 
+{{- define "hami.dra.driver.amd.image" -}}
+{{ include "common.images.image" (dict "imageRoot" .Values.drivers.amd.image "global" .Values.global) }}
+{{- end -}}
+
+{{- define "hami.dra.driver.amd.imagePullSecrets" -}}
+{{ include "common.images.pullSecrets" (dict "images" (list .Values.drivers.amd.image) "global" .Values.global) }}
+{{- end -}}
+
 {{- define "hami.dra.driver.fake.image" -}}
 {{ include "common.images.image" (dict "imageRoot" .Values.drivers.fake.image "global" .Values.global) }}
 {{- end -}}

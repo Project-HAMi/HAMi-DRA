@@ -30,6 +30,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command:
             - /bin/webhook
             - --v=5
