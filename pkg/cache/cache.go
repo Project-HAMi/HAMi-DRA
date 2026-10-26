@@ -162,7 +162,6 @@ func (c *Cache) onDeleteClaim(obj interface{}) {
 }
 
 // onAddSlice is called when a new ResourceSlice is added
-// this implementation assumes one node one slice
 func (c *Cache) onAddSlice(obj interface{}) {
 	slice, ok := obj.(*resourceapi.ResourceSlice)
 	if !ok {
@@ -173,12 +172,9 @@ func (c *Cache) onAddSlice(obj interface{}) {
 		return
 	}
 	nodeName := *slice.Spec.NodeName
-	nodeInfo := c.NodeDevices.getOrCreateNodeInfo(nodeName)
-	nodeInfo.mu.Lock()
-	defer nodeInfo.mu.Unlock()
-
-	nodeInfo.Devices = c.ParseNodeDevice(slice)
-	klog.V(4).Infof("Added ResourceSlice %s for node %s with %d devices", slice.Name, nodeName, len(nodeInfo.Devices))
+	devices := c.ParseNodeDevice(slice)
+	c.NodeDevices.setSliceDevices(nodeName, slice.Name, devices)
+	klog.V(4).Infof("Added ResourceSlice %s for node %s with %d devices", slice.Name, nodeName, len(devices))
 }
 
 func (c *Cache) onUpdateSlice(oldObj, newObj interface{}) {
@@ -191,51 +187,13 @@ func (c *Cache) onUpdateSlice(oldObj, newObj interface{}) {
 		klog.Warningf("ResourceSlice %s has no node name, skipping update", newSlice.Name)
 		return
 	}
-	oldNodeName := ""
-	if oldSlice.Spec.NodeName != nil {
-		oldNodeName = *oldSlice.Spec.NodeName
-	}
 	newNodeName := *newSlice.Spec.NodeName
 
-	if oldNodeName != "" && oldNodeName != newNodeName {
-		c.NodeDevices.mu.Lock()
-		delete(c.NodeDevices.Nodes, oldNodeName)
-		c.NodeDevices.mu.Unlock()
+	if oldSlice.Spec.NodeName != nil && *oldSlice.Spec.NodeName != newNodeName {
+		c.NodeDevices.setSliceDevices(*oldSlice.Spec.NodeName, oldSlice.Name, nil)
 	}
 
-	newNodeInfo := c.NodeDevices.getOrCreateNodeInfo(newNodeName)
-	newNodeInfo.mu.Lock()
-	defer newNodeInfo.mu.Unlock()
-
-	// Save existing device usage before replacing the device list
-	// Use device name as key since it's more stable than UUID
-	existingUsage := make(map[string]struct {
-		CoresUsed  int64
-		MemoryUsed int64
-	})
-	for _, device := range newNodeInfo.Devices {
-		existingUsage[device.Name] = struct {
-			CoresUsed  int64
-			MemoryUsed int64
-		}{
-			CoresUsed:  device.CoresUsed,
-			MemoryUsed: device.MemoryUsed,
-		}
-	}
-
-	// Parse new device list (this will reset CoresUsed and MemoryUsed to 0)
-	newNodeInfo.Devices = c.ParseNodeDevice(newSlice)
-
-	// Restore usage from existing devices
-	for _, device := range newNodeInfo.Devices {
-		if usage, ok := existingUsage[device.Name]; ok {
-			device.CoresUsed = usage.CoresUsed
-			device.MemoryUsed = usage.MemoryUsed
-			klog.V(5).Infof("Restored usage for device %s (%s) on node %s: CoresUsed=%d, MemoryUsed=%d",
-				device.Name, device.UUID, newNodeName, device.CoresUsed, device.MemoryUsed)
-		}
-	}
-
+	c.NodeDevices.setSliceDevices(newNodeName, newSlice.Name, c.ParseNodeDevice(newSlice))
 	klog.V(4).Infof("Updated ResourceSlice %s for node %s", newSlice.Name, newNodeName)
 }
 
@@ -256,9 +214,7 @@ func (c *Cache) onDeleteSlice(obj interface{}) {
 		return
 	}
 	nodeName := *slice.Spec.NodeName
-	c.NodeDevices.mu.Lock()
-	delete(c.NodeDevices.Nodes, nodeName)
-	c.NodeDevices.mu.Unlock()
+	c.NodeDevices.setSliceDevices(nodeName, slice.Name, nil)
 
 	klog.V(4).Infof("Deleted ResourceSlice %s for node %s", slice.Name, nodeName)
 }

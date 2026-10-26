@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	resourceapi "k8s.io/api/resource/v1"
@@ -134,9 +135,14 @@ func (c *DRADeviceConfig) NewPrimaryDeviceRequest() resourceapi.DeviceRequest {
 	}
 }
 
-func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) resource.Quantity {
+func (c *DRADeviceConfig) ConvertMemory(memQty resource.Quantity) (resource.Quantity, error) {
 	// HAMi device-plugin memory resources are expressed in MiB.
-	return resource.MustParse(fmt.Sprintf("%d", memQty.Value()*1024*1024))
+	const mib = 1024 * 1024
+	v := memQty.Value()
+	if v < 0 || v > math.MaxInt64/mib {
+		return resource.Quantity{}, fmt.Errorf("memory request %s MiB is out of range", memQty.String())
+	}
+	return *resource.NewQuantity(v*mib, resource.DecimalSI), nil
 }
 
 func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quantity, error) {
@@ -159,19 +165,20 @@ func draDeviceFromNvidia(c *NvidiaConfig) *DRADeviceConfig {
 		c = &NvidiaConfig{}
 	}
 	return &DRADeviceConfig{
-		Vendor:                VendorNvidia,
-		ResourceCountName:     firstNonEmpty(c.ResourceCountName, "nvidia.com/gpu"),
-		ResourceMemoryName:    firstNonEmpty(c.ResourceMemoryName, "nvidia.com/gpumem"),
-		ResourceCoreName:      firstNonEmpty(c.ResourceCoreName, "nvidia.com/gpucores"),
-		DeviceClassName:       c.DeviceClassName,
-		DraDriverName:         c.DraDriverName,
-		RequestName:           "gpu",
-		DeviceType:            constants.NvidiaDeviceType,
-		UseUUIDAnnotation:     constants.UseUUIDAnnotation,
-		NoUseUUIDAnnotation:   constants.NoUseUUIDAnnotation,
-		UseTypeAnnotation:     constants.UseTypeAnnotation,
-		NoUseTypeAnnotation:   constants.NoUseTypeAnnotation,
-		ReferenceComputeUnits: 0,
+		Vendor:                       VendorNvidia,
+		ResourceCountName:            firstNonEmpty(c.ResourceCountName, "nvidia.com/gpu"),
+		ResourceMemoryName:           firstNonEmpty(c.ResourceMemoryName, "nvidia.com/gpumem"),
+		ResourceCoreName:             firstNonEmpty(c.ResourceCoreName, "nvidia.com/gpucores"),
+		ResourceMemoryPercentageName: c.ResourceMemoryPercentageName,
+		DeviceClassName:              c.DeviceClassName,
+		DraDriverName:                c.DraDriverName,
+		RequestName:                  "gpu",
+		DeviceType:                   constants.NvidiaDeviceType,
+		UseUUIDAnnotation:            constants.UseUUIDAnnotation,
+		NoUseUUIDAnnotation:          constants.NoUseUUIDAnnotation,
+		UseTypeAnnotation:            constants.UseTypeAnnotation,
+		NoUseTypeAnnotation:          constants.NoUseTypeAnnotation,
+		ReferenceComputeUnits:        0,
 	}
 }
 
