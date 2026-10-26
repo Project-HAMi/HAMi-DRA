@@ -345,3 +345,42 @@ func TestHandleDryRunDoesNotCreateTemplates(t *testing.T) {
 	require.NoError(t, a.Client.List(context.Background(), templates))
 	assert.Empty(t, templates.Items)
 }
+
+func TestHandleTaskUsesConfiguredCoreCapacityName(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+
+	admission := &MutatingAdmission{
+		Client: fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName:     "amd.com/gpu",
+			ResourceCoreName:      "amd.com/gpucores",
+			RequestName:           "gpu",
+			CoreCapacityName:      "computeUnits",
+			ReferenceComputeUnits: 304,
+		},
+	}
+	task := &vcv1alpha1.TaskSpec{
+		Name: "t",
+		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "c",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"amd.com/gpu":      resource.MustParse("1"),
+				"amd.com/gpucores": resource.MustParse("50"),
+			}},
+		}}}},
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+
+	names, err := admission.handleTask(context.Background(), task, job)
+	require.NoError(t, err)
+	require.Len(t, names, 1)
+
+	rct := &resourceapi.ResourceClaimTemplate{}
+	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, rct))
+	caps := rct.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests
+	assert.Contains(t, caps, resourceapi.QualifiedName("computeUnits"))
+	assert.NotContains(t, caps, resourceapi.QualifiedName("cores"))
+}

@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	// GPUSchedulerPolicy allows converting `hami.io/gpu-scheduler-policy` annotation to constraints in ResourceClaim
+	// GPUSchedulerPolicyByDeviceConstraint is reserved for converting the `hami.io/gpu-scheduler-policy`
+	// annotation to constraints in the ResourceClaim. It is registered so the flag is accepted,
+	// but no code path reads it yet, so enabling it has no effect.
 	GPUSchedulerPolicyByDeviceConstraint featuregate.Feature = "GPUSchedulerPolicyByDeviceConstraint"
 )
 

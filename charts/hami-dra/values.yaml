@@ -225,6 +225,9 @@ certs:
   custom:
     crt: ""
     key: ""
+    # Base64 encoded PEM CA that signed crt. Required when the CA is not trusted
+    # by the API server, otherwise every admission call fails TLS verification.
+    caBundle: ""
   # Cert-manager configuration
   certManager:
     enabled: true
@@ -299,7 +302,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/hami-dra-fake-driver
-      tag: "latest"
+      tag: "v0.2.3"
       pullPolicy: IfNotPresent
       pullSecrets: []
     resources:

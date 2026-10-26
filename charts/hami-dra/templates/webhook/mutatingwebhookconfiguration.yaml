@@ -15,6 +15,9 @@ webhooks:
   - name: mutate.hami.io
     admissionReviewVersions: ["v1"]
     clientConfig:
+      {{- if and (not .Values.certs.certManager.enabled) .Values.certs.custom.caBundle }}
+      caBundle: {{ .Values.certs.custom.caBundle }}
+      {{- end }}
       service:
         name: {{ .Release.Name }}-dra-webhook
         namespace: {{ .Release.Namespace }}
@@ -54,6 +57,9 @@ webhooks:
   - name: mutate-update.hami.io
     admissionReviewVersions: ["v1"]
     clientConfig:
+      {{- if and (not .Values.certs.certManager.enabled) .Values.certs.custom.caBundle }}
+      caBundle: {{ .Values.certs.custom.caBundle }}
+      {{- end }}
       service:
         name: {{ .Release.Name }}-dra-webhook
         namespace: {{ .Release.Namespace }}
@@ -89,6 +95,9 @@ webhooks:
   - name: mutate-volcano.hami.io
     admissionReviewVersions: ["v1"]
     clientConfig:
+      {{- if and (not .Values.certs.certManager.enabled) .Values.certs.custom.caBundle }}
+      caBundle: {{ .Values.certs.custom.caBundle }}
+      {{- end }}
       service:
         name: {{ .Release.Name }}-dra-webhook
         namespace: {{ .Release.Namespace }}

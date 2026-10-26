@@ -648,3 +648,46 @@ func TestCache_ComputeUnitsCountAsCores(t *testing.T) {
 		t.Errorf("CoreRatio(CoresTotal) = %v, want 1", got)
 	}
 }
+
+func TestCache_MultipleSlicesPerNode(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")
+	b := createTestResourceSlice("slice-b", "node-1", "gpu-1", "uuid-1")
+
+	c.onAddSlice(a)
+	c.onAddSlice(b)
+	if got := len(c.NodeDevices.GetDevices("node-1")); got != 2 {
+		t.Fatalf("expected devices of both slices, got %d", got)
+	}
+
+	c.onDeleteSlice(a)
+	devices := c.NodeDevices.GetDevices("node-1")
+	if len(devices) != 1 || devices[0].Name != "gpu-1" {
+		t.Fatalf("deleting one slice must keep the other's devices, got %+v", devices)
+	}
+
+	c.onDeleteSlice(b)
+	if got := c.NodeDevices.GetDevices("node-1"); len(got) != 0 {
+		t.Errorf("node should be gone once its last slice is deleted, got %d devices", len(got))
+	}
+}
+
+func TestCache_ClaimBeforeSliceIsCounted(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+
+	c.NodeDevices.onAddClaim(createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024))
+	c.onAddSlice(createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0"))
+
+	devices := c.NodeDevices.GetDevices("node-1")
+	if len(devices) != 1 || devices[0].CoresUsed != 30 || devices[0].MemoryUsed != 1024 {
+		t.Fatalf("usage of a claim seen before its slice must be applied, got %+v", devices)
+	}
+
+	// Recreating the slice must not lose the usage either.
+	c.onDeleteSlice(createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0"))
+	c.onAddSlice(createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0"))
+	devices = c.NodeDevices.GetDevices("node-1")
+	if len(devices) != 1 || devices[0].CoresUsed != 30 {
+		t.Fatalf("usage must survive slice recreation, got %+v", devices)
+	}
+}

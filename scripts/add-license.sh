@@ -21,7 +21,8 @@ has_correct_license() {
 # Function to remove old license header
 remove_old_license() {
     local file=$1
-    local temp_file=$(mktemp)
+    local temp_file
+    temp_file=$(mktemp)
     local in_comment=false
     local skip_until_empty=false
     
@@ -58,7 +59,8 @@ remove_old_license() {
 # Function to check whether the leading block comment is a license header
 has_leading_license_block() {
     local file=$1
-    local temp_file=$(mktemp)
+    local temp_file
+    temp_file=$(mktemp)
     local in_comment=false
 
     while IFS= read -r line || [ -n "$line" ]; do

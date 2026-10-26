@@ -270,3 +270,27 @@ func TestValidatingHandle_DryRunKeepsTemplates(t *testing.T) {
 		client.ObjectKey{Namespace: "default", Name: name}, &resourceapi.ResourceClaimTemplate{}),
 		"dry-run delete must not remove a webhook-created template")
 }
+
+func TestValidatingHandle_KeepsUserManagedResourceClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	own := &resourceapi.ResourceClaim{ObjectMeta: metav1.ObjectMeta{Name: "default-p-main", Namespace: "default"}}
+	shared := &resourceapi.ResourceClaim{ObjectMeta: metav1.ObjectMeta{Name: "team-shared-gpu", Namespace: "default"}}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(own, shared).Build()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"}},
+		Spec: corev1.PodSpec{ResourceClaims: []corev1.PodResourceClaim{
+			podResourceClaim("gpu", "default-p-main"),
+			podResourceClaim("shared", "team-shared-gpu"),
+		}},
+	}
+
+	resp := (&ValidatingAdmission{Client: fakeClient}).Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed)
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "default-p-main"}, &resourceapi.ResourceClaim{})
+	assert.True(t, apierrors.IsNotFound(err), "webhook-generated claim should be deleted")
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "team-shared-gpu"}, &resourceapi.ResourceClaim{})
+	assert.NoError(t, err, "user-managed claim must survive pod deletion")
+}

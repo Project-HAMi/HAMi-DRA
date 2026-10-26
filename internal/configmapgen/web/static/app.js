@@ -548,10 +548,23 @@ function cloneObject(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// crypto.randomUUID only exists in secure contexts (https or localhost), but
+// this page is also served over plain http from a node or NodePort.
+function randomUUID() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function withId(value) {
   return {
     ...value,
-    id: crypto.randomUUID()
+    id: randomUUID()
   };
 }
 
@@ -626,7 +639,7 @@ function indentMultiline(value, indent) {
 }
 
 function generateGPUUUID() {
-  const uuid = crypto.randomUUID().toUpperCase();
+  const uuid = randomUUID().toUpperCase();
   return `GPU-${uuid}`;
 }
 
@@ -640,9 +653,30 @@ function parseHex(value, fallback) {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+async function writeClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  // navigator.clipboard is undefined over plain http, fall back to execCommand.
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("copy command was rejected");
+    }
+  } finally {
+    document.body.removeChild(area);
+  }
+}
+
 async function copyText(text, button, successText) {
-  const originalText = button.textContent;
-  await navigator.clipboard.writeText(text);
+  await writeClipboard(text);
   button.textContent = successText;
   setTimeout(() => {
     applyTranslations(button.parentElement || document);

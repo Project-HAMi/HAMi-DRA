@@ -9,20 +9,20 @@ CERT_DIR=${CERT_DIR:-/tmp/k8s-webhook-server/serving-certs}
 SERVICE_NAME=${SERVICE_NAME:-webhook}
 NAMESPACE=${NAMESPACE:-default}
 
-mkdir -p ${CERT_DIR}
+mkdir -p "${CERT_DIR}"
 
 # Generate private key
-openssl genrsa -out ${CERT_DIR}/tls.key 2048
+openssl genrsa -out "${CERT_DIR}"/tls.key 2048
 
 # Generate certificate signing request
-openssl req -new -key ${CERT_DIR}/tls.key \
-  -out ${CERT_DIR}/tls.csr \
+openssl req -new -key "${CERT_DIR}"/tls.key \
+  -out "${CERT_DIR}"/tls.csr \
   -subj "/CN=${SERVICE_NAME}.${NAMESPACE}.svc"
 
 # Generate self-signed certificate
-openssl x509 -req -days 365 -in ${CERT_DIR}/tls.csr \
-  -signkey ${CERT_DIR}/tls.key \
-  -out ${CERT_DIR}/tls.crt \
+openssl x509 -req -days 365 -in "${CERT_DIR}"/tls.csr \
+  -signkey "${CERT_DIR}"/tls.key \
+  -out "${CERT_DIR}"/tls.crt \
   -extensions v3_req \
   -extfile <(
     cat <<EOF
@@ -45,5 +45,5 @@ EOF
 
 echo "Certificate generated in ${CERT_DIR}"
 echo "Files:"
-ls -lh ${CERT_DIR}/*.{key,crt}
+ls -lh "${CERT_DIR}"/*.{key,crt}
 

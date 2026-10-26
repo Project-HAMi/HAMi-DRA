@@ -149,11 +149,16 @@ func runPlugin(parent context.Context, opts Options) error {
 
 	<-ctx.Done()
 	stop()
-	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
-		logger.Error(cause, "driver exited with error")
-	}
+	return exitError(context.Cause(ctx), driver.Shutdown())
+}
 
-	return driver.Shutdown()
+// exitError turns a fatal cancel cause into an error so the process exits
+// non-zero. A plain cancellation (signal) is a clean shutdown.
+func exitError(cause, shutdownErr error) error {
+	if cause != nil && !errors.Is(cause, context.Canceled) {
+		return errors.Join(fmt.Errorf("driver exited with error: %w", cause), shutdownErr)
+	}
+	return shutdownErr
 }
 
 func newCoreClient(kubeconfig string) (coreclientset.Interface, error) {
