@@ -24,7 +24,7 @@ COPY pkg/ pkg/
 # Build
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -a -o webhook cmd/webhook/main.go
 
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 # ponytail: pinned digest can lag CVE fixes in apk repos; upgrade at build time to pick up patched packages
 RUN apk update && apk upgrade --no-cache && adduser -D -u 1000 webhook
 COPY --from=builder /workspace/webhook /bin/webhook
