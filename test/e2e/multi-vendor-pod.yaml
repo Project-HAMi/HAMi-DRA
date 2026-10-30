@@ -22,6 +22,9 @@ spec:
           nvidia.com/gpu: "1"
           hygon.com/hcunum: "1"
           huawei.com/Ascend310P: "1"
+          amd.com/gpu: "1"
+          amd.com/gpumem: "2048"
+          amd.com/gpucores: "50"
 ---
 apiVersion: v1
 kind: Pod

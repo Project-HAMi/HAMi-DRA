@@ -29,7 +29,7 @@ trap diagnostics ERR
 kubectl apply -f "${repo_root}/test/e2e/fake-multi-vendor.yaml"
 kubectl rollout status -n hami-dra-e2e daemonset/fake-drivers --timeout=120s
 
-for driver in hami-core-gpu.project-hami.io dra.hygon.com ascend.project-hami.io; do
+for driver in hami-core-gpu.project-hami.io dra.hygon.com ascend.project-hami.io gpu.amd.com; do
   for _ in $(seq 1 60); do
     slice=$(kubectl get resourceslices -o jsonpath="{.items[?(@.spec.driver=='${driver}')].metadata.name}" | awk '{print $1}')
     test -n "${slice}" && break
@@ -40,8 +40,10 @@ done
 
 helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --namespace hami-dra-system --create-namespace \
-  --set 'deviceVendors={nvidia,hygon,ascend}' \
+  --set 'deviceVendors={nvidia,hygon,ascend,amd}' \
+  --set amdReferenceComputeUnits=32 \
   --set drivers.nvidia.enabled=false \
+  --set drivers.amd.enabled=false \
   --set drivers.fake.enabled=false \
   --set monitor.enabled=false \
   --set webhook.image.registry='' \
@@ -50,6 +52,16 @@ helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --set webhook.image.pullPolicy=Never \
   --wait --timeout=180s
 
+# Recreate workloads so a reused cluster exercises CREATE admission, not UPDATE.
+old_claims=$(kubectl get pod -n hami-dra-workloads multi-vendor --ignore-not-found \
+  -o jsonpath='{.spec.resourceClaims[*].resourceClaimName}')
+kubectl delete pod -n hami-dra-workloads multi-vendor no-device \
+  --ignore-not-found --wait=true --timeout=120s
+for claim in ${old_claims}; do
+  kubectl delete -n hami-dra-workloads "resourceclaim/${claim}" \
+    --ignore-not-found --wait=true --timeout=120s
+done
+
 kubectl apply -f "${repo_root}/test/e2e/multi-vendor-pod.yaml"
 kubectl wait -n hami-dra-workloads pod/multi-vendor --for=condition=Ready --timeout=180s
 kubectl wait -n hami-dra-workloads pod/no-device --for=condition=Ready --timeout=180s
@@ -57,14 +69,20 @@ test -z "$(kubectl get pod -n hami-dra-workloads no-device -o jsonpath='{.spec.r
 test -z "$(kubectl get pod -n hami-dra-workloads no-device -o jsonpath='{.metadata.labels.hami\.io/dra}')"
 
 claims=$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath='{.spec.resourceClaims[*].resourceClaimName}')
-test "$(wc -w <<<"${claims}" | tr -d ' ')" = 3
-for suffix in nvidia hygon ascend310p; do
+test "$(wc -w <<<"${claims}" | tr -d ' ')" = 4
+for suffix in nvidia hygon ascend310p amd; do
   grep -q -- "-${suffix}" <<<"${claims}"
 done
 
 test -z "$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath='{.spec.containers[0].resources.limits.nvidia\.com/gpu}')"
 test -z "$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath='{.spec.containers[0].resources.limits.hygon\.com/hcunum}')"
 test -z "$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath='{.spec.containers[0].resources.limits.huawei\.com/Ascend310P}')"
+
+for resource in gpu gpumem gpucores; do
+  for field in requests limits; do
+    test -z "$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath="{.spec.containers[0].resources.${field}.amd\\.com/${resource}}")"
+  done
+done
 
 for claim in ${claims}; do
   kubectl wait -n hami-dra-workloads "resourceclaim/${claim}" --for=jsonpath='{.status.allocation}' --timeout=180s
@@ -74,14 +92,32 @@ declare -A expected_classes=(
   [nvidia]=hami-core-gpu.project-hami.io
   [hygon]=dra.hygon.com
   [ascend310p]=hami-vnpu-core.project-hami.io
+  [amd]=gpu.amd.com
 )
 declare -A expected_drivers=(
   [nvidia]=hami-core-gpu.project-hami.io
   [hygon]=dra.hygon.com
   [ascend310p]=ascend.project-hami.io
+  [amd]=gpu.amd.com
 )
 for suffix in "${!expected_classes[@]}"; do
   claim=$(tr ' ' '\n' <<<"${claims}" | grep -- "-${suffix}$")
   test "$(kubectl get -n hami-dra-workloads "resourceclaim/${claim}" -o jsonpath='{.spec.devices.requests[0].exactly.deviceClassName}')" = "${expected_classes[${suffix}]}"
   test "$(kubectl get -n hami-dra-workloads "resourceclaim/${claim}" -o jsonpath='{.status.allocation.devices.results[0].driver}')" = "${expected_drivers[${suffix}]}"
+done
+
+amd_claim=$(tr ' ' '\n' <<<"${claims}" | grep -- '-amd$')
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.count}')" = 1
+
+# AMD core requests are percentages; 50% of the fixture's 32 CUs consumes 16 CUs.
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.computeUnits}')" = 16
+test -z "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.cores}')"
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.status.allocation.devices.results[0].consumedCapacity.computeUnits}')" = 16
+
+# Requests and allocation results may serialize the same 2 GiB quantity differently.
+for memory in \
+  "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.memory}')" \
+  "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.status.allocation.devices.results[0].consumedCapacity.memory}')"
+do
+  test "${memory}" = 2147483648 || test "${memory}" = 2Gi
 done

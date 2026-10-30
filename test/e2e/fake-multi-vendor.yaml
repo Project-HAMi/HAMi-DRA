@@ -101,6 +101,33 @@ data:
               cores: {value: "8"}
               memory: {value: 24Gi}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fake-amd
+  namespace: hami-dra-e2e
+data:
+  config.yaml: |
+    groups:
+      - name: amd
+        devices:
+          - name: amd-0
+            allowMultipleAllocations: true
+            attributes:
+              type: {string: amdgpu}
+            capacity:
+              memory: {value: 16Gi}
+              computeUnits:
+                value: "32"
+                requestPolicy:
+                  default: "32"
+                  validRange: {min: "1", step: "1"}
+              simdUnits:
+                value: "64"
+                requestPolicy:
+                  default: "0"
+                  validRange: {min: "0"}
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -159,6 +186,19 @@ spec:
             - --kubelet-plugins-directory-path=/var/lib/kubelet/plugins
           env: *nodeEnv
           volumeMounts: *pluginMounts
+        - name: amd
+          image: hami-dra-fake-driver:e2e
+          imagePullPolicy: Never
+          args:
+            - --node-name=$(NODE_NAME)
+            - --driver-name=gpu.amd.com
+            - --configmap-name=fake-amd
+            - --configmap-namespace=hami-dra-e2e
+            - --configmap-key=config.yaml
+            - --kubelet-registrar-directory-path=/var/lib/kubelet/plugins_registry
+            - --kubelet-plugins-directory-path=/var/lib/kubelet/plugins
+          env: *nodeEnv
+          volumeMounts: *pluginMounts
       volumes:
         - name: registry
           hostPath: {path: /var/lib/kubelet/plugins_registry, type: DirectoryOrCreate}
@@ -191,3 +231,12 @@ spec:
   selectors:
     - cel:
         expression: device.driver == "ascend.project-hami.io" && device.attributes["ascend.project-hami.io"].type == "HAMivNPUCore"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu.amd.com
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"
