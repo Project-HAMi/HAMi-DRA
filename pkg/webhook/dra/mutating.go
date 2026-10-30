@@ -221,7 +221,12 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		a.removeResource(container, countResourceName)
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
-			converted, err := cfg.ConvertCores(coreQty)
+			coreCfg, err := a.withReferenceComputeUnits(ctx, cfg)
+			if err != nil {
+				cleanup()
+				return nil, err
+			}
+			converted, err := coreCfg.ConvertCores(coreQty)
 			if err != nil {
 				cleanup()
 				return nil, err
@@ -456,13 +461,46 @@ func (a *MutatingAdmission) requestMemoryPercentage(ctx context.Context, claim *
 // deviceMemorySizes returns the distinct memory capacities, in bytes, of the
 // devices of cfg's driver and type in the published ResourceSlices.
 func (a *MutatingAdmission) deviceMemorySizes(ctx context.Context, cfg *config.DRADeviceConfig) ([]int64, error) {
+	return a.deviceCapacities(ctx, cfg, "memory", cfg.ResourceMemoryPercentageName)
+}
+
+// withReferenceComputeUnits returns cfg with ReferenceComputeUnits set for a
+// core percentage. A configured value wins. Otherwise, for AMD, it is the
+// computeUnits of the published GPUs when they all have the same count; GPUs
+// of different sizes need the value set, since one percentage then maps to
+// several CU counts.
+func (a *MutatingAdmission) withReferenceComputeUnits(ctx context.Context, cfg *config.DRADeviceConfig) (*config.DRADeviceConfig, error) {
+	if cfg.DeviceType != constants.AmdDeviceType || cfg.ReferenceComputeUnits > 0 {
+		return cfg, nil
+	}
+	sizes, err := a.deviceCapacities(ctx, cfg, "computeUnits", cfg.ResourceCoreName)
+	if err != nil {
+		return nil, err
+	}
+	switch len(sizes) {
+	case 0:
+		// Nothing is published yet; ConvertCores reports the missing setting.
+		return cfg, nil
+	case 1:
+		withRef := *cfg
+		withRef.ReferenceComputeUnits = sizes[0]
+		return &withRef, nil
+	default:
+		return nil, fmt.Errorf("%s devices have %d different computeUnits %v, set referenceComputeUnits to convert %s requests", cfg.EffectiveDraDriverName(), len(sizes), sizes, cfg.ResourceCoreName)
+	}
+}
+
+// deviceCapacities returns the distinct values of the capacity capName of the
+// devices of cfg's driver and type in the published ResourceSlices; what names
+// the request they size, for the error.
+func (a *MutatingAdmission) deviceCapacities(ctx context.Context, cfg *config.DRADeviceConfig, capName, what string) ([]int64, error) {
 	// The cached List waits for the informer to sync; bound it like
 	// ExtendedResourceWarnings does so admission can't hang on it.
 	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	list := &resourceapi.ResourceSliceList{}
 	if err := a.Client.List(listCtx, list); err != nil {
-		return nil, fmt.Errorf("listing ResourceSlices to size %s: %w", cfg.ResourceMemoryPercentageName, err)
+		return nil, fmt.Errorf("listing ResourceSlices to size %s: %w", what, err)
 	}
 	seen := map[int64]bool{}
 	var sizes []int64
@@ -474,7 +512,7 @@ func (a *MutatingAdmission) deviceMemorySizes(ctx context.Context, cfg *config.D
 			if t := d.Attributes["type"].StringValue; t == nil || *t != cfg.DeviceType {
 				continue
 			}
-			if c, ok := d.Capacity["memory"]; ok && !seen[c.Value.Value()] {
+			if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
 				seen[c.Value.Value()] = true
 				sizes = append(sizes, c.Value.Value())
 			}
