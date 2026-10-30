@@ -909,3 +909,57 @@ func TestHandleContainerAMDMemoryPercentage(t *testing.T) {
 		assert.ErrorContains(t, err, tc.err, tc.pct)
 	}
 }
+
+func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
+	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	slice := func(name string, cus ...int64) *resourceapi.ResourceSlice {
+		var devices []resourceapi.Device
+		for i, cu := range cus {
+			devices = append(devices, resourceapi.Device{
+				Name:       fmt.Sprintf("gpu-%d", i),
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+				Capacity:   map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"computeUnits": {Value: *resource.NewQuantity(cu, resource.DecimalSI)}},
+			})
+		}
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: name}, Devices: devices,
+		}}
+	}
+	run := func(objs ...client.Object) (*MutatingAdmission, []string, error) {
+		a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build(), DeviceConfigs: deviceConfigs}
+		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			"amd.com/gpu":      resource.MustParse("1"),
+			"amd.com/gpucores": resource.MustParse("25"),
+		}}}
+		names, err := a.handleContainer(context.Background(), c, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}, nil, false)
+		return a, names, err
+	}
+
+	// Every GPU has 304 CUs: 25 percent is 76 CUs without any setting.
+	a, names, err := run(slice("a", 304), slice("b", 304, 304))
+	require.NoError(t, err)
+	claim := &resourceapi.ResourceClaim{}
+	require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+	cus := claim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
+	assert.Equal(t, int64(76), cus.Value())
+
+	// GPUs of different sizes cannot share one percentage base.
+	a, _, err = run(slice("a", 304), slice("b", 32))
+	assert.ErrorContains(t, err, "2 different computeUnits [32 304]")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, a.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "a failed conversion must not leave a claim behind")
+
+	// A configured value wins over the published sizes.
+	configured, err := (&config.Config{Amd: config.AmdConfig{ReferenceComputeUnits: 100}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	deviceConfigs = configured
+	a, names, err = run(slice("a", 304), slice("b", 32))
+	require.NoError(t, err)
+	require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+	cus = claim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
+	assert.Equal(t, int64(25), cus.Value())
+}
