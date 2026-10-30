@@ -21,7 +21,7 @@ This webhook automatically transforms Pod specifications that request GPU resour
 
 - Kubernetes version >= 1.34 with the `DRAConsumableCapacity` [featuregate](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) enabled (alpha in 1.34, beta and on by default since 1.36)
 - [CDI](https://github.com/cncf-tags/container-device-interface?tab=readme-ov-file#how-to-configure-cdi) must be enabled in the underlying container runtime (such as containerd or CRI-O).
-- NVIDIA GPU Driver 440 or later
+- NVIDIA GPU Driver 440 or later (NVIDIA GPUs), or the `amdgpu` driver bound to the GPU (AMD GPUs, see [AMD GPUs](./docs/amd-dra.md))
 
 ### Configure and install with Helm
 
@@ -79,7 +79,7 @@ deviceVendors:
   - amd
 ```
 
-The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md) and [Ascend DRA](./docs/ascend-dra.md). For AMD, add `amd` to `deviceVendors`, enable `drivers.amd`, and set `amdReferenceComputeUnits` (see the comments in `charts/hami-dra/values.yaml`).
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
 The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd`.
 
 ### ResourceClaimTemplate
