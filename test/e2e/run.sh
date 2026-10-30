@@ -52,6 +52,16 @@ helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --set webhook.image.pullPolicy=Never \
   --wait --timeout=180s
 
+# Recreate workloads so a reused cluster exercises CREATE admission, not UPDATE.
+old_claims=$(kubectl get pod -n hami-dra-workloads multi-vendor --ignore-not-found \
+  -o jsonpath='{.spec.resourceClaims[*].resourceClaimName}')
+kubectl delete pod -n hami-dra-workloads multi-vendor no-device \
+  --ignore-not-found --wait=true --timeout=120s
+for claim in ${old_claims}; do
+  kubectl delete -n hami-dra-workloads "resourceclaim/${claim}" \
+    --ignore-not-found --wait=true --timeout=120s
+done
+
 kubectl apply -f "${repo_root}/test/e2e/multi-vendor-pod.yaml"
 kubectl wait -n hami-dra-workloads pod/multi-vendor --for=condition=Ready --timeout=180s
 kubectl wait -n hami-dra-workloads pod/no-device --for=condition=Ready --timeout=180s
