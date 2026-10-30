@@ -22,21 +22,20 @@ HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` a
 helm install hami-dra hami-dra/hami-dra -n hami-dra --create-namespace \
   --set "deviceVendors={amd}" \
   --set drivers.nvidia.enabled=false \
-  --set drivers.amd.enabled=true \
-  --set amdReferenceComputeUnits=304
+  --set drivers.amd.enabled=true
 ```
 
 Add `nvidia`, `hygon` or `ascend` to `deviceVendors` for a mixed cluster.
 
 ## `amdReferenceComputeUnits`
 
-`amd.com/gpucores` is a percentage; the claim asks for absolute CUs. Set `amdReferenceComputeUnits` to the `computeUnits` capacity of one GPU:
+`amd.com/gpucores` is a percentage; the claim asks for absolute CUs. With `amdReferenceComputeUnits` unset (0) the webhook reads the `computeUnits` of the published GPUs and uses it when they all have the same count, so a cluster of one GPU model needs no setting. Set it when GPUs of different sizes share the cluster (the webhook then rejects `gpucores` requests and lists the sizes), or for Volcano jobs, which do not read the ResourceSlices. The value is the `computeUnits` capacity of one GPU:
 
 ```bash
 kubectl get resourceslice -o jsonpath='{range .items[*].spec.devices[*]}{.name}{" "}{.capacity.computeUnits.value}{"\n"}{end}'
 ```
 
-An MI325X has 304, an MI300X 304, an RX 9060 XT 32. A request with `amd.com/gpucores` is rejected while the value is 0. Requests without `gpucores` do not need it. The value is one number per release, so a cluster with GPUs of different sizes has to pick one (the percentage is then of that size).
+An MI325X has 304, an MI300X 304, an RX 9060 XT 32. A configured value always wins over the published sizes. Requests without `gpucores` never need it.
 
 ## Use
 
@@ -77,6 +76,6 @@ A slice pod shows `HSA_CU_MASK=0:0-75` (25 percent of 304) and `HIP_DEVICE_MEMOR
 
 - **`unsupported device vendor "amd"` and the webhook restarts.** The webhook image is older than the AMD support. Use chart 0.2.4 or newer.
 - **The ResourceSlice is empty, driver log says `Discovered 0 AMD GPU devices`.** `amdgpu` is loaded but not bound to the GPU; see the prerequisites.
-- **A pod with `gpucores` is rejected.** Set `amdReferenceComputeUnits`.
+- **A pod with `gpucores` is rejected.** The published GPUs differ in `computeUnits` or none is published yet; set `amdReferenceComputeUnits`.
 - **A pod stays Pending.** The GPU has too few free CUs or too little free memory for the request, or a type or UUID annotation matches no GPU. A whole-GPU claim waits until every slice on that GPU is gone.
 - **The driver pod does not start.** The node needs the labels `hami.io/amd-mode=dra` and `amd.com/gpu.family`.

@@ -5,6 +5,7 @@
 ### Added
 
 - AMD GPUs: `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` and `amd.com/gpucores` requests are converted for the AMD DRA driver (`deviceVendors` with `amd`, `amdReferenceComputeUnits`), and `drivers.amd.enabled` installs the driver on nodes labelled `hami.io/amd-mode=dra` (#172). See [docs/amd-dra.md](docs/amd-dra.md).
+- `amd.com/gpucores` works without `amdReferenceComputeUnits` when every published AMD GPU has the same `computeUnits` (#202).
 - A pod can opt out of the DRA conversion with the label `hami.io/skip-dra` (#182).
 - Monitor metric names and labels follow HAMi and Prometheus conventions; `monitor.legacyMetrics` (on by default) keeps the old names too (#160).
 - The multi-vendor e2e suite covers AMD allocation (#198).
