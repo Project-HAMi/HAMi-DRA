@@ -79,7 +79,7 @@ deviceVendors:
   - amd
 ```
 
-The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, enable `drivers.amd`, and set `amdReferenceComputeUnits` (see the comments in `charts/hami-dra/values.yaml`).
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
 The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd`.
 
 ### ResourceClaimTemplate
