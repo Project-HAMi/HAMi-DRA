@@ -115,7 +115,7 @@ webhook:
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-webhook
-    tag: "v0.2.3"
+    tag: "v0.2.4"
     ## Specify an imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
@@ -179,7 +179,7 @@ monitor:
   image:
     registry: ghcr.io
     repository: project-hami/hami-dra-monitor
-    tag: "v0.2.3"
+    tag: "v0.2.4"
     ## Specify an imagePullPolicy
     ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
     ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
@@ -293,7 +293,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/amd-dra-driver
-      tag: "0.4.0"
+      tag: "0.4.1"
       pullPolicy: IfNotPresent
       pullSecrets: []
   fake:
@@ -302,7 +302,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/hami-dra-fake-driver
-      tag: "v0.2.3"
+      tag: "v0.2.4"
       pullPolicy: IfNotPresent
       pullSecrets: []
     resources:
