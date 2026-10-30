@@ -16,9 +16,21 @@ HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` a
 
    The driver DaemonSet also needs the `amd.com/gpu.family` label that the AMD GPU labeller sets. Without the labeller, add it by hand (`kubectl label node <node> amd.com/gpu.family=AI`) or override `drivers.amd.daemonSet.affinity`.
 
+## Memory isolation
+
+The memory limit has two layers: the `libamvgpu.so` hook (loaded with `LD_AUDIT`) and, on a node with the dmem cgroup controller (kernel 6.14 or newer), a kernel cap. Without the dmem controller only the hook limits memory, and a process that drops `LD_AUDIT` (for example `env -u LD_AUDIT`) can allocate past its slice. Before relying on the isolation, check that the controller is there:
+
+```bash
+grep dmem /sys/fs/cgroup/cgroup.controllers
+```
+
+Images that cannot load the hook (musl, glibc older than 2.34) are refused at start on a node without dmem, and run on a node with it.
+
 ## Install
 
 ```bash
+helm repo add hami-dra https://project-hami.github.io/HAMi-DRA
+helm repo update
 helm install hami-dra hami-dra/hami-dra -n hami-dra --create-namespace \
   --set "deviceVendors={amd}" \
   --set drivers.nvidia.enabled=false \
@@ -35,7 +47,7 @@ Add `nvidia`, `hygon` or `ascend` to `deviceVendors` for a mixed cluster.
 kubectl get resourceslice -o jsonpath='{range .items[*].spec.devices[*]}{.name}{" "}{.capacity.computeUnits.value}{"\n"}{end}'
 ```
 
-An MI325X has 304, an MI300X 304, an RX 9060 XT 32. A configured value always wins over the published sizes. Requests without `gpucores` never need it.
+An MI325X has 304, an MI300X 304, an RX 9060 XT 32. A configured value always wins over the published sizes and applies to every AMD GPU, including smaller ones: with 304, 25 percent is 76 CUs, which a 32-CU GPU cannot provide, so such requests do not schedule there. On a mixed cluster, restrict these requests to GPUs with enough `computeUnits` (for example with `amd.com/use-gputype`). Requests without `gpucores` never need it.
 
 ## Use
 
@@ -44,6 +56,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: slice
+  namespace: workloads   # not the release namespace: the webhook skips that one by default
 spec:
   containers:
   - name: c
@@ -57,9 +70,9 @@ spec:
 ```
 
 - `amd.com/gpumem-percentage: 10` takes a percentage of the GPU memory instead of MiB.
-- Without `gpumem` and `gpucores` the pod gets the whole GPU and no limits.
+- Without `gpumem`, `gpumem-percentage` and `gpucores` the pod gets the whole GPU and no limits.
 - Annotations select GPUs: `amd.com/use-gpu-uuid`, `amd.com/nouse-gpu-uuid`, `amd.com/use-gputype` and `amd.com/nouse-gputype`. A type matches any part of the product name, for example `MI325X` for `AMD_Instinct_MI325X` (driver 0.4.1 or newer; older drivers published `AMD_Radeon_Graphics` for the MI325X).
-- `hami.io/skip-dra` keeps a pod out of the conversion.
+- The label `hami.io/skip-dra: "true"` keeps a pod out of the conversion. Other values do not.
 
 ## Verify
 
