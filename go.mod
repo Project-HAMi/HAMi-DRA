@@ -8,10 +8,10 @@ require (
 	github.com/stretchr/testify v1.12.1
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
-	k8s.io/component-base v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
+	k8s.io/component-base v0.37.2
 	k8s.io/klog/v2 v2.140.0
 	sigs.k8s.io/controller-runtime v0.25.2
 )
@@ -70,7 +70,7 @@ require (
 )
 
 require (
-	k8s.io/dynamic-resource-allocation v0.37.1
+	k8s.io/dynamic-resource-allocation v0.37.2
 	volcano.sh/apis v1.14.0
 )
 
@@ -103,7 +103,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/grpc v1.84.0 // indirect
-	k8s.io/apiserver v0.37.1 // indirect
-	k8s.io/kubelet v0.37.1 // indirect
+	k8s.io/apiserver v0.37.2 // indirect
+	k8s.io/kubelet v0.37.2 // indirect
 	tags.cncf.io/container-device-interface/specs-go v1.1.1 // indirect
 )
