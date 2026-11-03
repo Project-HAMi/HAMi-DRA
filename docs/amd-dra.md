@@ -82,7 +82,7 @@ spec:
 kubectl -n hami-dra get pods
 kubectl get resourceslice -o yaml | grep -E "productName|brand|computeUnits|memory:"
 kubectl -n workloads get resourceclaim
-kubectl exec <pod> -- env | grep -E "HSA_CU_MASK|HIP_DEVICE_MEMORY_LIMIT"
+kubectl -n workloads exec <pod> -- env | grep -E "HSA_CU_MASK|HIP_DEVICE_MEMORY_LIMIT"
 ```
 
 A slice pod shows `HSA_CU_MASK=0:0-75` (25 percent of 304) and `HIP_DEVICE_MEMORY_LIMIT_0=20000m`. The monitor labels its metrics with `devicebrand` and `deviceproductname`.
