@@ -6,7 +6,7 @@ HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` a
 
 1. Kubernetes with DRA and the `DRAConsumableCapacity` feature gate (on by default since 1.36), and CDI in the container runtime.
 2. The `amdgpu` driver **bound** to the GPU, not only loaded. Check that `lspci -k` shows `amdgpu` in use and that `/dev/kfd` exists. An Instinct MI325X needed kernel 6.14 with `amdgpu-dkms` 6.16.13: the in-tree driver of kernels 6.8 and 7.0 did not bind to it, and that DKMS version does not build on kernels 6.17 and 7.0. The kernel memory cap (dmem cgroup) needs kernel 6.14 or newer.
-3. [cert-manager](https://cert-manager.io/docs/installation/) for the webhook certificate.
+3. [cert-manager](https://cert-manager.io/docs/installation/) for the webhook certificate, or set `certs.certManager.enabled=false` and provide your own (see the README).
 4. A namespace that allows privileged pods: the driver runs privileged.
 5. One mode per node. A node handed to the DRA driver runs no HAMi AMD device plugin, because both would hand out the same GPU. Label the node:
 
@@ -36,6 +36,8 @@ helm install hami-dra hami-dra/hami-dra -n hami-dra --create-namespace \
   --set drivers.nvidia.enabled=false \
   --set drivers.amd.enabled=true
 ```
+
+Create the namespace the example below uses: `kubectl create namespace workloads`.
 
 Add `nvidia`, `hygon` or `ascend` to `deviceVendors` for a mixed cluster.
 
@@ -79,7 +81,7 @@ spec:
 ```bash
 kubectl -n hami-dra get pods
 kubectl get resourceslice -o yaml | grep -E "productName|brand|computeUnits|memory:"
-kubectl get resourceclaim
+kubectl -n workloads get resourceclaim
 kubectl exec <pod> -- env | grep -E "HSA_CU_MASK|HIP_DEVICE_MEMORY_LIMIT"
 ```
 
