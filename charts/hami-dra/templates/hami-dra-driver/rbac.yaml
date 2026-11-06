@@ -105,6 +105,19 @@ rules:
   - list
   - watch
   - update
+{{- if .Values.drivers.nvidia.enabled }}
+# The NVIDIA HAMi-Core preparation path resolves the reserving Pod and
+# labels it for the upstream vGPUmonitor even when the monitor is disabled.
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
