@@ -80,9 +80,7 @@ rules:
   resources:
   - resourceclaims/status
   verbs:
-  - get
   - update
-  - patch
 - apiGroups:
   - resource.k8s.io
   resources:
