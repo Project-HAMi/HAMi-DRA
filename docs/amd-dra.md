@@ -1,6 +1,6 @@
 # AMD GPUs
 
-HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` and `amd.com/gpucores` requests into ResourceClaims for the AMD DRA driver ([amd-dra-driver](https://github.com/Project-HAMi/amd-dra-driver), driver name `gpu.amd.com`). With `drivers.amd.enabled` the chart installs that driver too, with the `GPUSharing` gate on, so several pods can take slices of one GPU: each gets its own CUs (`HSA_CU_MASK`) and its own memory limit.
+HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` and `amd.com/gpucores` requests into ResourceClaims for the AMD DRA driver ([amd-dra-driver](https://github.com/Project-HAMi/amd-dra-driver), driver name `gpu.amd.com`). With `drivers.amd.enabled` the chart installs that driver too, with the `GPUSharing` gate on, so several pods can take slices of one GPU: each gets its own CUs (`HSA_CU_MASK`) and its own memory limit. The CU mask is an environment setting, not a tenant isolation boundary: a process that starts without `HSA_CU_MASK` can use CUs of other slices.
 
 ## Prerequisites
 
@@ -18,10 +18,11 @@ HAMi-DRA converts `amd.com/gpu`, `amd.com/gpumem`, `amd.com/gpumem-percentage` a
 
 ## Memory isolation
 
-The memory limit has two layers: the `libamvgpu.so` hook (loaded with `LD_AUDIT`) and, on a node with the dmem cgroup controller (kernel 6.14 or newer), a kernel cap. Without the dmem controller only the hook limits memory, and a process that drops `LD_AUDIT` (for example `env -u LD_AUDIT`) can allocate past its slice. Before relying on the isolation, check that the controller is there:
+The memory limit has two layers: the `libamvgpu.so` hook (loaded with `LD_AUDIT`) and, on a node with the dmem cgroup controller (kernel 6.14 or newer), a kernel cap. Without the dmem controller only the hook limits memory, and a process that drops `LD_AUDIT` (for example `env -u LD_AUDIT`) can allocate past its slice. The kernel cap also needs cgroup v2 and the systemd cgroup driver in the container runtime; with cgroupfs it is not applied. Before relying on the isolation, check that the controller is there and that a slice pod has a cap (`max` means none):
 
 ```bash
 grep dmem /sys/fs/cgroup/cgroup.controllers
+cat /sys/fs/cgroup/kubepods.slice/<pod cgroup>/dmem.max
 ```
 
 Images that cannot load the hook (musl, glibc older than 2.34) are refused at start on a node without dmem, and run on a node with it.
@@ -67,7 +68,7 @@ spec:
     resources:
       limits:
         amd.com/gpu: 1
-        amd.com/gpumem: 20000     # MiB
+        amd.com/gpumem: 8000      # MiB, must fit the GPU
         amd.com/gpucores: 25      # percent of amdReferenceComputeUnits
 ```
 
@@ -85,7 +86,7 @@ kubectl -n workloads get resourceclaim
 kubectl -n workloads exec <pod> -- env | grep -E "HSA_CU_MASK|HIP_DEVICE_MEMORY_LIMIT"
 ```
 
-A slice pod shows `HSA_CU_MASK=0:0-75` (25 percent of 304) and `HIP_DEVICE_MEMORY_LIMIT_0=20000m`. The monitor labels its metrics with `devicebrand` and `deviceproductname`.
+A slice pod shows `HSA_CU_MASK=0:0-75` (25 percent of 304) and `HIP_DEVICE_MEMORY_LIMIT_0=8000m`. The monitor labels its metrics with `devicebrand` and `deviceproductname`.
 
 ## Troubleshooting
 
