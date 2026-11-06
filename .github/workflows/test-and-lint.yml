@@ -78,7 +78,29 @@ jobs:
         run: |
           helm template hami-dra ./charts/hami-dra \
             --set drivers.fake.enabled=true \
-            --set drivers.nvidia.enabled=false
+            --set drivers.nvidia.enabled=false \
+            | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          role = next(d for d in docs if d.get("kind") == "ClusterRole" and d["metadata"]["name"] == "hami-dra-driver-clusterrole")
+          assert not [r for r in role["rules"] if r.get("resources") == ["pods"]], "pods rule must stay NVIDIA-only"
+          print("fake-only render: driver ClusterRole has no pods rule")
+          '
+
+      - name: Check driver pods RBAC with NVIDIA driver enabled
+        run: |
+          helm template hami-dra ./charts/hami-dra \
+            --set drivers.nvidia.enabled=true \
+            --set drivers.fake.enabled=false \
+            | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          role = next(d for d in docs if d.get("kind") == "ClusterRole" and d["metadata"]["name"] == "hami-dra-driver-clusterrole")
+          pods = [r for r in role["rules"] if r.get("resources") == ["pods"]]
+          assert pods, "driver ClusterRole is missing the pods rule"
+          assert pods[0]["verbs"] == ["get", "list", "watch", "patch"], pods[0]["verbs"]
+          print("NVIDIA-enabled render: pods get/list/watch/patch present in driver ClusterRole")
+          '
 
   helm-chart-test:
     name: Helm Chart Lint and Test
