@@ -76,7 +76,7 @@ func (c *Collector) collectNodeMetrics(ch chan<- prometheus.Metric) {
 		}
 
 		for idx, device := range devices {
-			deviceIdx := strconv.Itoa(idx)
+			deviceIdx := deviceIndex(device, idx)
 			deviceType := c.deviceTypes.DeviceType(device.Driver, device.ProductName)
 
 			// hami_dra_gpu_memory_limit_bytes
@@ -241,7 +241,7 @@ func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
 			for idx, d := range devices {
 				if d.Name == result.DeviceName {
 					device = d
-					deviceIdx = strconv.Itoa(idx)
+					deviceIdx = deviceIndex(d, idx)
 					break
 				}
 			}
@@ -269,4 +269,13 @@ func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
 		}
 	}
 	return sums
+}
+
+// deviceIndex returns the device's minor number, or its position in the
+// node's device list when the driver does not publish one.
+func deviceIndex(d *cache.NodeDevice, pos int) string {
+	if d.Minor != nil {
+		return strconv.FormatInt(*d.Minor, 10)
+	}
+	return strconv.Itoa(pos)
 }

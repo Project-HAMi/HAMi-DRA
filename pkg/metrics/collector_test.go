@@ -158,6 +158,33 @@ vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",dev
 	}
 }
 
+func TestCollect_DeviceIndexUsesMinor(t *testing.T) {
+	// The slice lists gpu1 before gpu0, so each position differs from the minor.
+	minor0, minor1 := int64(0), int64(1)
+	col := newPodTestCollector(
+		[]*cache.NodeDevice{
+			{Name: "gpu1", UUID: "uuid-2", Minor: &minor1, Brand: "NVIDIA", ProductName: "V100", MemoryTotal: 16777216},
+			{Name: "gpu0", UUID: "uuid-1", Minor: &minor0, Brand: "NVIDIA", ProductName: "V100", MemoryTotal: 16777216},
+		},
+		[]*cache.AllocationResult{
+			{Namespace: "default", DeviceName: "gpu1", Cores: 10, Memory: 2097152},
+		},
+	)
+	want := `
+# HELP hami_dra_gpu_memory_limit_bytes Device memory limit for a certain GPU
+# TYPE hami_dra_gpu_memory_limit_bytes gauge
+hami_dra_gpu_memory_limit_bytes{device_index="0",device_name="gpu0",device_type="V100",device_uuid="uuid-1",node="node1"} 16777216
+hami_dra_gpu_memory_limit_bytes{device_index="1",device_name="gpu1",device_type="V100",device_uuid="uuid-2",node="node1"} 16777216
+# HELP vGPUDeviceMemoryAllocated vGPU Device memory allocated for a container
+# TYPE vGPUDeviceMemoryAllocated gauge
+vGPUDeviceMemoryAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",deviceproductname="V100",deviceuuid="uuid-2",nodeid="node1",podname="pod1",podnamespace="default"} 2
+`
+	names := []string{"hami_dra_gpu_memory_limit_bytes", "vGPUDeviceMemoryAllocated"}
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), names...); err != nil {
+		t.Errorf("device index mismatch: %v", err)
+	}
+}
+
 func TestCollect_PodMetricsSkipDeviceWithoutUUID(t *testing.T) {
 	// pod1 holds two devices that have no uuid attribute
 	col := newPodTestCollector(

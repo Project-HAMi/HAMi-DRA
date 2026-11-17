@@ -196,6 +196,31 @@ func TestNodeDevices_ParseNodeDeviceDriver(t *testing.T) {
 	}
 }
 
+func TestNodeDevices_ParseNodeDeviceMinor(t *testing.T) {
+	slice := createTestResourceSlice("test-slice", "test-node", "gpu1", "test-uuid-1")
+	minor := int64(1)
+	slice.Spec.Devices[0].Attributes[constants.DeviceAttributeMinor] = resourceapi.DeviceAttribute{IntValue: &minor}
+
+	devices := NewNodeDevices().ParseNodeDevice(slice)
+
+	if devices[0].Minor == nil {
+		t.Fatal("Expected minor 1, got nil")
+	}
+	if *devices[0].Minor != 1 {
+		t.Errorf("Expected minor 1, got %d", *devices[0].Minor)
+	}
+}
+
+func TestNodeDevices_ParseNodeDeviceWithoutMinor(t *testing.T) {
+	slice := createTestResourceSlice("test-slice", "test-node", "gpu0", "test-uuid-1")
+
+	devices := NewNodeDevices().ParseNodeDevice(slice)
+
+	if devices[0].Minor != nil {
+		t.Errorf("Expected no minor, got %d", *devices[0].Minor)
+	}
+}
+
 func TestCache_onUpdateSlice(t *testing.T) {
 	c := &Cache{
 		NodeDevices: NewNodeDevices(),

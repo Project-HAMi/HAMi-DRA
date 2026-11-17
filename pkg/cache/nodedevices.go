@@ -53,6 +53,7 @@ type NodeDevice struct {
 	Name         string
 	Driver       string
 	UUID         string
+	Minor        *int64
 	Architecture string
 	Brand        string
 	ProductName  string
@@ -110,6 +111,13 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 				device.Name, slice.Name)
 		}
 
+		// Minor is the device's minor number, nil when the driver does not publish one.
+		var minor *int64
+		if minorAttr, ok := device.Attributes[constants.DeviceAttributeMinor]; ok && minorAttr.IntValue != nil {
+			v := *minorAttr.IntValue
+			minor = &v
+		}
+
 		architecture := ""
 		if archAttr, ok := device.Attributes[constants.DeviceAttributeArchitecture]; ok && archAttr.StringValue != nil {
 			architecture = *archAttr.StringValue
@@ -129,6 +137,7 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 			Name:         device.Name,
 			Driver:       slice.Spec.Driver,
 			UUID:         uuid,
+			Minor:        minor,
 			Architecture: architecture,
 			Brand:        brand,
 			ProductName:  productName,
