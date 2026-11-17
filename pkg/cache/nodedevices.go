@@ -167,6 +167,10 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 	deviceCopies := make([]*NodeDevice, len(nodeInfo.Devices))
 	for i, device := range nodeInfo.Devices {
 		deviceCopy := *device
+		if device.Minor != nil {
+			minor := *device.Minor
+			deviceCopy.Minor = &minor
+		}
 		deviceCopies[i] = &deviceCopy
 	}
 	return deviceCopies

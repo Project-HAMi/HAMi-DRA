@@ -89,6 +89,7 @@ func TestCache_GetDevices(t *testing.T) {
 	}
 
 	// Add some devices manually
+	minor := int64(1)
 	nodeName := "test-node"
 	c.NodeDevices.mu.Lock()
 	nodeInfo := &NodeDeviceInfo{
@@ -97,6 +98,7 @@ func TestCache_GetDevices(t *testing.T) {
 				Name:         "gpu0",
 				Driver:       "hami-core-gpu.project-hami.io",
 				UUID:         "test-uuid-1",
+				Minor:        &minor,
 				Architecture: "sm_80",
 				Brand:        "NVIDIA",
 				ProductName:  "Tesla V100",
@@ -141,6 +143,11 @@ func TestCache_GetDevices(t *testing.T) {
 	c.NodeDevices.mu.RUnlock()
 	if originalDevice.CoresUsed != 50 {
 		t.Error("Modifying returned device should not affect original device")
+	}
+
+	*device.Minor = 99
+	if *originalDevice.Minor != 1 {
+		t.Error("Modifying returned device minor should not affect original device")
 	}
 }
 
