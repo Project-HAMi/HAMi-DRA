@@ -1048,3 +1048,49 @@ func TestHandleContainerAMDComputeSharing(t *testing.T) {
 	_, err = a.handleContainer(context.Background(), c, pod, nil, false)
 	assert.NoError(t, err, "a core request does not depend on compute sharing")
 }
+
+// Only GPUs the claim can get count for the compute sharing check: an old
+// driver elsewhere, or a superseded generation of a pool, must not reject it.
+func TestCheckComputeSharingSelectableDevices(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: true}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	gpu := func(pool string, generation int64, uuid string, minCU int64) *resourceapi.ResourceSlice {
+		cu := resourceapi.DeviceCapacity{
+			Value:         *resource.NewQuantity(32, resource.DecimalSI),
+			RequestPolicy: &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(minCU, resource.DecimalSI)}},
+		}
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%d", pool, generation)}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: pool, Generation: generation},
+			Devices: []resourceapi.Device{{
+				Name:       "gpu-0",
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu"), "uuid": amdStr(uuid)},
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+					"memory":       {Value: *resource.NewQuantity(16304<<20, resource.BinarySI)},
+					"computeUnits": cu,
+				},
+			}},
+		}}
+	}
+	run := func(annotations map[string]string, slices ...client.Object) error {
+		a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slices...).Build(), DeviceConfigs: cfgs}
+		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			"amd.com/gpu":    resource.MustParse("1"),
+			"amd.com/gpumem": resource.MustParse("2000"),
+		}}}
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default", Annotations: annotations}}
+		_, err := a.handleContainer(context.Background(), c, pod, nil, false)
+		return err
+	}
+	const rejected = "accept no fewer than 1 computeUnits"
+
+	oldNode, newNode := gpu("old", 1, "GPU-old", 1), gpu("new", 1, "GPU-new", 0)
+	assert.ErrorContains(t, run(nil, oldNode, newNode), rejected, "any GPU the claim can get may round the request up")
+	assert.NoError(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-new"}, oldNode, newNode))
+	assert.NoError(t, run(map[string]string{cfgs[0].NoUseUUIDAnnotation: "GPU-old"}, oldNode, newNode))
+	assert.ErrorContains(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-old"}, oldNode, newNode), rejected)
+
+	assert.NoError(t, run(nil, gpu("a", 1, "GPU-a", 1), gpu("a", 2, "GPU-a", 0)), "a superseded generation does not count")
+	assert.ErrorContains(t, run(nil, gpu("a", 1, "GPU-a", 0), gpu("a", 2, "GPU-a", 1)), rejected)
+}
