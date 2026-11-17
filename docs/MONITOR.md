@@ -116,10 +116,10 @@ The monitor exposes the following Prometheus metrics:
 
 | Metrics | Description | Example |
 | --- | --- | --- |
-| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1 |
-| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 2.5769803776e+10 |
-| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 0.3 |
-| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{device_index="0",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1.073741824e+10 |
+| hami_dra_gpu_core_limit_ratio | Device core limit for a certain GPU | `{device_index="1",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1 |
+| hami_dra_gpu_memory_limit_bytes | Device memory limit for a certain GPU | `{device_index="1",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 2.5769803776e+10 |
+| hami_dra_gpu_core_allocated_ratio | Device core allocated for a certain GPU | `{device_index="1",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 0.3 |
+| hami_dra_gpu_memory_allocated_bytes | Device memory allocated for a certain GPU | `{device_index="1",device_name="hami-gpu-1",device_type="NVIDIA A30",device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",node="a30-node"}` 1.073741824e+10 |
 | hami_dra_vgpu_core_allocated_ratio | vGPU Device core allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 0.3 |
 | hami_dra_vgpu_memory_allocated_bytes | vGPU Device memory allocated for a container | `{device_uuid="GPU-a4d27439-566b-841c-428f-d87e73e4134e",namespace="default",node="a30-node",pod="pod-0"}` 1.073741824e+10 |
 
