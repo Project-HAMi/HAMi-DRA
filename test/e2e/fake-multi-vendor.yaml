@@ -121,7 +121,7 @@ data:
                 value: "32"
                 requestPolicy:
                   default: "32"
-                  validRange: {min: "1", step: "1"}
+                  validRange: {min: "0", step: "1"}
               simdUnits:
                 value: "64"
                 requestPolicy:

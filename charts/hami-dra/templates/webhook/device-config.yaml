@@ -246,6 +246,7 @@ data:
       draDriverName: {{ .Values.amdDraDriverName }}
       requestName: gpu
       referenceComputeUnits: {{ .Values.amdReferenceComputeUnits }}
+      computeSharing: {{ .Values.amdComputeSharing }}
     ascend:
       deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.ascend.driverName" . }}

@@ -46,6 +46,10 @@ amdDraDriverName: gpu.amd.com
 # (kubectl get resourceslice -o yaml) when the GPUs differ in size, or for
 # Volcano jobs, which do not read the ResourceSlices.
 amdReferenceComputeUnits: 0
+# Compute sharing: a pod that sets amd.com/gpumem or amd.com/gpumem-percentage
+# but no amd.com/gpucores shares all CUs of its GPU (no HSA_CU_MASK) instead of
+# taking them all. Needs amd-dra-driver 0.5.0 or newer.
+amdComputeSharing: false
 deviceVendors:
   - nvidia  # nvidia | hygon | amd | ascend
 
@@ -295,7 +299,7 @@ drivers:
     image:
       registry: ghcr.io
       repository: project-hami/amd-dra-driver
-      tag: "0.4.1"
+      tag: "0.5.0"
       pullPolicy: IfNotPresent
       pullSecrets: []
   fake:

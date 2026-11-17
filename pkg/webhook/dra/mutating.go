@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
+	draCEL "k8s.io/dynamic-resource-allocation/cel"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -258,6 +259,13 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
 			cleanup()
 			return nil, err
+		}
+		// After the annotation selectors, so only devices the claim can get count.
+		if exactly := resourceclaim.Spec.Devices.Requests[0].Exactly; cfg.ShareCompute(exactly.Capacity.Requests, hasMem || pctQty != nil) {
+			if err := a.checkComputeSharing(ctx, cfg, exactly.Selectors); err != nil {
+				cleanup()
+				return nil, err
+			}
 		}
 		if pctQty != nil {
 			if err := a.requestMemoryPercentage(ctx, resourceclaim, cfg, *pctQty); err != nil {
@@ -494,30 +502,90 @@ func (a *MutatingAdmission) withReferenceComputeUnits(ctx context.Context, cfg *
 // devices of cfg's driver and type in the published ResourceSlices; what names
 // the request they size, for the error.
 func (a *MutatingAdmission) deviceCapacities(ctx context.Context, cfg *config.DRADeviceConfig, capName, what string) ([]int64, error) {
+	seen := map[int64]bool{}
+	var sizes []int64
+	err := a.eachDevice(ctx, cfg, what, func(d resourceapi.Device) {
+		if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
+			seen[c.Value.Value()] = true
+			sizes = append(sizes, c.Value.Value())
+		}
+	})
+	slices.Sort(sizes)
+	return sizes, err
+}
+
+// checkComputeSharing rejects a 0-core request when a published device that
+// selectors can pick accepts no fewer than some cores: the scheduler would
+// round the request up and the driver would pin the slice to those few cores.
+func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config.DRADeviceConfig, selectors []resourceapi.DeviceSelector) error {
+	compiler := draCEL.GetCompiler(draCEL.Features{EnableConsumableCapacity: true})
+	compiled := make([]draCEL.CompilationResult, 0, len(selectors))
+	for _, sel := range selectors {
+		if sel.CEL == nil {
+			continue
+		}
+		result := compiler.CompileCELExpression(sel.CEL.Expression, draCEL.Options{})
+		if result.Error != nil {
+			return fmt.Errorf("compile selector %q: %w", sel.CEL.Expression, result.Error)
+		}
+		compiled = append(compiled, result)
+	}
+	selectable := func(d resourceapi.Device) bool {
+		dev := draCEL.Device{Driver: cfg.EffectiveDraDriverName(), AllowMultipleAllocations: d.AllowMultipleAllocations, Attributes: d.Attributes, Capacity: d.Capacity}
+		for _, result := range compiled {
+			// A device the selector fails on is kept: the check fails closed.
+			if ok, _, err := result.DeviceMatches(ctx, dev); err == nil && !ok {
+				return false
+			}
+		}
+		return true
+	}
+
+	name := resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())
+	var minimum *resource.Quantity
+	err := a.eachDevice(ctx, cfg, "compute sharing", func(d resourceapi.Device) {
+		if c, ok := d.Capacity[name]; ok && c.RequestPolicy != nil && c.RequestPolicy.ValidRange != nil &&
+			c.RequestPolicy.ValidRange.Min != nil && c.RequestPolicy.ValidRange.Min.Sign() > 0 && selectable(d) {
+			minimum = c.RequestPolicy.ValidRange.Min
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if minimum != nil {
+		return fmt.Errorf("%s devices accept no fewer than %s %s, so compute sharing cannot request 0; update the driver or turn compute sharing off", cfg.EffectiveDraDriverName(), minimum.String(), name)
+	}
+	return nil
+}
+
+// eachDevice calls fn for every device of cfg's driver and type in the
+// published ResourceSlices; what names the request they serve, for the error.
+// Slices of a pool older than its newest generation are skipped, as the
+// scheduler does while a driver replaces them.
+func (a *MutatingAdmission) eachDevice(ctx context.Context, cfg *config.DRADeviceConfig, what string, fn func(resourceapi.Device)) error {
 	// The cached List waits for the informer to sync; bound it like
 	// ExtendedResourceWarnings does so admission can't hang on it.
 	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	list := &resourceapi.ResourceSliceList{}
 	if err := a.Client.List(listCtx, list); err != nil {
-		return nil, fmt.Errorf("listing ResourceSlices to size %s: %w", what, err)
+		return fmt.Errorf("listing ResourceSlices for %s: %w", what, err)
 	}
-	seen := map[int64]bool{}
-	var sizes []int64
+	newest := map[string]int64{}
 	for _, rs := range list.Items {
-		if rs.Spec.Driver != cfg.EffectiveDraDriverName() {
+		if rs.Spec.Driver == cfg.EffectiveDraDriverName() {
+			newest[rs.Spec.Pool.Name] = max(newest[rs.Spec.Pool.Name], rs.Spec.Pool.Generation)
+		}
+	}
+	for _, rs := range list.Items {
+		if rs.Spec.Driver != cfg.EffectiveDraDriverName() || rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name] {
 			continue
 		}
 		for _, d := range rs.Spec.Devices {
-			if t := d.Attributes["type"].StringValue; t == nil || *t != cfg.DeviceType {
-				continue
-			}
-			if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
-				seen[c.Value.Value()] = true
-				sizes = append(sizes, c.Value.Value())
+			if t := d.Attributes["type"].StringValue; t != nil && *t == cfg.DeviceType {
+				fn(d)
 			}
 		}
 	}
-	slices.Sort(sizes)
-	return sizes, nil
+	return nil
 }
