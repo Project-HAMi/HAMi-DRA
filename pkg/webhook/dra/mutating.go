@@ -255,7 +255,12 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 			}
 		}
 
-		cfg.ShareCompute(resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests, hasMem || pctQty != nil)
+		if cfg.ShareCompute(resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests, hasMem || pctQty != nil) {
+			if err := a.checkComputeSharing(ctx, cfg); err != nil {
+				cleanup()
+				return nil, err
+			}
+		}
 
 		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
 			cleanup()
@@ -496,30 +501,59 @@ func (a *MutatingAdmission) withReferenceComputeUnits(ctx context.Context, cfg *
 // devices of cfg's driver and type in the published ResourceSlices; what names
 // the request they size, for the error.
 func (a *MutatingAdmission) deviceCapacities(ctx context.Context, cfg *config.DRADeviceConfig, capName, what string) ([]int64, error) {
+	seen := map[int64]bool{}
+	var sizes []int64
+	err := a.eachDevice(ctx, cfg, what, func(d resourceapi.Device) {
+		if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
+			seen[c.Value.Value()] = true
+			sizes = append(sizes, c.Value.Value())
+		}
+	})
+	slices.Sort(sizes)
+	return sizes, err
+}
+
+// checkComputeSharing rejects a 0-core request when a published device
+// accepts no fewer than some cores: the scheduler would round the request up
+// and the driver would pin the slice to those few cores.
+func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config.DRADeviceConfig) error {
+	name := resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())
+	var minimum *resource.Quantity
+	err := a.eachDevice(ctx, cfg, "compute sharing", func(d resourceapi.Device) {
+		if c, ok := d.Capacity[name]; ok && c.RequestPolicy != nil && c.RequestPolicy.ValidRange != nil &&
+			c.RequestPolicy.ValidRange.Min != nil && c.RequestPolicy.ValidRange.Min.Sign() > 0 {
+			minimum = c.RequestPolicy.ValidRange.Min
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if minimum != nil {
+		return fmt.Errorf("%s devices accept no fewer than %s %s, so compute sharing cannot request 0; update the driver or turn compute sharing off", cfg.EffectiveDraDriverName(), minimum.String(), name)
+	}
+	return nil
+}
+
+// eachDevice calls fn for every device of cfg's driver and type in the
+// published ResourceSlices; what names the request they serve, for the error.
+func (a *MutatingAdmission) eachDevice(ctx context.Context, cfg *config.DRADeviceConfig, what string, fn func(resourceapi.Device)) error {
 	// The cached List waits for the informer to sync; bound it like
 	// ExtendedResourceWarnings does so admission can't hang on it.
 	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	list := &resourceapi.ResourceSliceList{}
 	if err := a.Client.List(listCtx, list); err != nil {
-		return nil, fmt.Errorf("listing ResourceSlices to size %s: %w", what, err)
+		return fmt.Errorf("listing ResourceSlices for %s: %w", what, err)
 	}
-	seen := map[int64]bool{}
-	var sizes []int64
 	for _, rs := range list.Items {
 		if rs.Spec.Driver != cfg.EffectiveDraDriverName() {
 			continue
 		}
 		for _, d := range rs.Spec.Devices {
-			if t := d.Attributes["type"].StringValue; t == nil || *t != cfg.DeviceType {
-				continue
-			}
-			if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
-				seen[c.Value.Value()] = true
-				sizes = append(sizes, c.Value.Value())
+			if t := d.Attributes["type"].StringValue; t != nil && *t == cfg.DeviceType {
+				fn(d)
 			}
 		}
 	}
-	slices.Sort(sizes)
-	return sizes, nil
+	return nil
 }

@@ -74,7 +74,7 @@ spec:
 
 - `amd.com/gpumem-percentage: 10` takes a percentage of the GPU memory instead of MiB.
 - Without `gpumem`, `gpumem-percentage` and `gpucores` the pod gets the whole GPU and no limits.
-- With `amdComputeSharing=true` a pod with `gpumem` or `gpumem-percentage` but no `gpucores` shares all CUs of its GPU with the other pods there: it gets no `HSA_CU_MASK`, only its memory limit. Without the setting such a pod takes all CUs, so no other slice fits next to it. Pods with `gpucores` keep their own CUs, but a sharing pod on the same GPU runs on those CUs too. Needs an amd-dra-driver newer than 0.4.1.
+- With `amdComputeSharing=true` a pod with `gpumem` or `gpumem-percentage` but no `gpucores` shares all CUs of its GPU with the other pods there: it gets no `HSA_CU_MASK`, only its memory limit. Without the setting such a pod takes all CUs, so no other slice fits next to it. Pods with `gpucores` keep their own CUs, but a sharing pod on the same GPU runs on those CUs too. Needs amd-dra-driver 0.5.0 or newer; with an older driver the webhook rejects such pods.
 - Annotations select GPUs: `amd.com/use-gpu-uuid`, `amd.com/nouse-gpu-uuid`, `amd.com/use-gputype` and `amd.com/nouse-gputype`. A type matches any part of the product name, for example `MI325X` for `AMD_Instinct_MI325X` (driver 0.4.1 or newer; older drivers published `AMD_Radeon_Graphics` for the MI325X).
 - The label `hami.io/skip-dra: "true"` keeps a pod out of the conversion. Other values do not.
 
@@ -94,5 +94,6 @@ A slice pod shows `HSA_CU_MASK=0:0-75` (25 percent of 304) and `HIP_DEVICE_MEMOR
 - **`unsupported device vendor "amd"` and the webhook restarts.** The webhook image is older than the AMD support. Use chart 0.2.4 or newer.
 - **The ResourceSlice is empty, driver log says `Discovered 0 AMD GPU devices`.** `amdgpu` is loaded but not bound to the GPU; see the prerequisites.
 - **A pod with `gpucores` is rejected.** The published GPUs differ in `computeUnits` or none is published yet; set `amdReferenceComputeUnits`.
+- **A pod is rejected with `accept no fewer than 1 computeUnits`.** `amdComputeSharing` is on but the driver is older than 0.5.0; update it.
 - **A pod stays Pending.** The GPU has too few free CUs or too little free memory for the request, or a type or UUID annotation matches no GPU. A whole-GPU claim waits until every slice on that GPU is gone.
 - **The driver pod does not start.** The node needs the labels `hami.io/amd-mode=dra` and `amd.com/gpu.family`.

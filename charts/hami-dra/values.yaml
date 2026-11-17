@@ -48,7 +48,7 @@ amdDraDriverName: gpu.amd.com
 amdReferenceComputeUnits: 0
 # Compute sharing: a pod that sets amd.com/gpumem or amd.com/gpumem-percentage
 # but no amd.com/gpucores shares all CUs of its GPU (no HSA_CU_MASK) instead of
-# taking them all. Needs an amd-dra-driver newer than 0.4.1.
+# taking them all. Needs amd-dra-driver 0.5.0 or newer.
 amdComputeSharing: false
 deviceVendors:
   - nvidia  # nvidia | hygon | amd | ascend

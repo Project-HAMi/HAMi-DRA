@@ -978,13 +978,17 @@ func TestHandleContainerAMDComputeSharing(t *testing.T) {
 			},
 		}},
 	}}
-	// run converts limits and returns the capacity requests of each claim request.
-	run := func(sharing bool, limits corev1.ResourceList) []map[resourceapi.QualifiedName]resource.Quantity {
+	newAdmission := func(sharing bool, slice *resourceapi.ResourceSlice) *MutatingAdmission {
 		cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: sharing}}).DRADevices([]string{config.VendorAMD})
 		require.NoError(t, err)
-		a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(gpu).Build(), DeviceConfigs: cfgs}
+		return &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slice).Build(), DeviceConfigs: cfgs}
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}
+	// run converts limits and returns the capacity requests of each claim request.
+	run := func(sharing bool, limits corev1.ResourceList) []map[resourceapi.QualifiedName]resource.Quantity {
+		a := newAdmission(sharing, gpu)
 		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits}}
-		names, err := a.handleContainer(context.Background(), c, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}, nil, false)
+		names, err := a.handleContainer(context.Background(), c, pod, nil, false)
 		require.NoError(t, err)
 		claim := &resourceapi.ResourceClaim{}
 		require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
@@ -1027,4 +1031,20 @@ func TestHandleContainerAMDComputeSharing(t *testing.T) {
 	assert.False(t, ok, "a whole GPU stays whole")
 	_, ok = cus(run(false, limits("amd.com/gpumem", "2000"))[0])
 	assert.False(t, ok, "without the setting a memory slice takes all CUs")
+
+	// A driver that accepts no fewer than 1 CU would pin the slice to one CU.
+	oldDriver := gpu.DeepCopy()
+	cu := oldDriver.Spec.Devices[0].Capacity["computeUnits"]
+	cu.RequestPolicy = &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(1, resource.DecimalSI)}}
+	oldDriver.Spec.Devices[0].Capacity["computeUnits"] = cu
+	a := newAdmission(true, oldDriver)
+	c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits("amd.com/gpumem", "2000")}}
+	_, err := a.handleContainer(context.Background(), c, pod, nil, false)
+	assert.ErrorContains(t, err, "gpu.amd.com devices accept no fewer than 1 computeUnits")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, a.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "a rejected conversion must not leave a claim behind")
+	c = &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits("amd.com/gpumem", "2000", "amd.com/gpucores", "50")}}
+	_, err = a.handleContainer(context.Background(), c, pod, nil, false)
+	assert.NoError(t, err, "a core request does not depend on compute sharing")
 }
