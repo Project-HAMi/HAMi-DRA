@@ -89,6 +89,7 @@ func TestCache_GetDevices(t *testing.T) {
 	}
 
 	// Add some devices manually
+	minor := int64(1)
 	nodeName := "test-node"
 	c.NodeDevices.mu.Lock()
 	nodeInfo := &NodeDeviceInfo{
@@ -97,6 +98,7 @@ func TestCache_GetDevices(t *testing.T) {
 				Name:         "gpu0",
 				Driver:       "hami-core-gpu.project-hami.io",
 				UUID:         "test-uuid-1",
+				Minor:        &minor,
 				Architecture: "sm_80",
 				Brand:        "NVIDIA",
 				ProductName:  "Tesla V100",
@@ -141,6 +143,11 @@ func TestCache_GetDevices(t *testing.T) {
 	c.NodeDevices.mu.RUnlock()
 	if originalDevice.CoresUsed != 50 {
 		t.Error("Modifying returned device should not affect original device")
+	}
+
+	*device.Minor = 99
+	if *originalDevice.Minor != 1 {
+		t.Error("Modifying returned device minor should not affect original device")
 	}
 }
 
@@ -193,6 +200,31 @@ func TestNodeDevices_ParseNodeDeviceDriver(t *testing.T) {
 	}
 	if devices[0].Driver != "hami-core-gpu.project-hami.io" {
 		t.Errorf("Expected driver 'hami-core-gpu.project-hami.io', got '%s'", devices[0].Driver)
+	}
+}
+
+func TestNodeDevices_ParseNodeDeviceMinor(t *testing.T) {
+	slice := createTestResourceSlice("test-slice", "test-node", "gpu1", "test-uuid-1")
+	minor := int64(1)
+	slice.Spec.Devices[0].Attributes[constants.DeviceAttributeMinor] = resourceapi.DeviceAttribute{IntValue: &minor}
+
+	devices := NewNodeDevices().ParseNodeDevice(slice)
+
+	if devices[0].Minor == nil {
+		t.Fatal("Expected minor 1, got nil")
+	}
+	if *devices[0].Minor != 1 {
+		t.Errorf("Expected minor 1, got %d", *devices[0].Minor)
+	}
+}
+
+func TestNodeDevices_ParseNodeDeviceWithoutMinor(t *testing.T) {
+	slice := createTestResourceSlice("test-slice", "test-node", "gpu0", "test-uuid-1")
+
+	devices := NewNodeDevices().ParseNodeDevice(slice)
+
+	if devices[0].Minor != nil {
+		t.Errorf("Expected no minor, got %d", *devices[0].Minor)
 	}
 }
 

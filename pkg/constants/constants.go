@@ -63,6 +63,7 @@ const (
 	DraLabel = "hami.io/dra"
 
 	DeviceAttributeUUID         = "uuid"
+	DeviceAttributeMinor        = "minor"
 	DeviceAttributeArchitecture = "architecture"
 	DeviceAttributeBrand        = "brand"
 	DeviceAttributeProductName  = "productName"
