@@ -963,3 +963,68 @@ func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
 	cus = claim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
 	assert.Equal(t, int64(25), cus.Value())
 }
+
+func TestHandleContainerAMDComputeSharing(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	gpu := &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: resourceapi.ResourceSliceSpec{
+		Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "a"},
+		Devices: []resourceapi.Device{{
+			Name:       "gpu-0",
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+				"memory":       {Value: *resource.NewQuantity(16304<<20, resource.BinarySI)},
+				"computeUnits": {Value: *resource.NewQuantity(32, resource.DecimalSI)},
+			},
+		}},
+	}}
+	// run converts limits and returns the capacity requests of each claim request.
+	run := func(sharing bool, limits corev1.ResourceList) []map[resourceapi.QualifiedName]resource.Quantity {
+		cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: sharing}}).DRADevices([]string{config.VendorAMD})
+		require.NoError(t, err)
+		a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(gpu).Build(), DeviceConfigs: cfgs}
+		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits}}
+		names, err := a.handleContainer(context.Background(), c, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}, nil, false)
+		require.NoError(t, err)
+		claim := &resourceapi.ResourceClaim{}
+		require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+		req := claim.Spec.Devices.Requests[0]
+		if req.Exactly != nil {
+			return []map[resourceapi.QualifiedName]resource.Quantity{req.Exactly.Capacity.Requests}
+		}
+		var out []map[resourceapi.QualifiedName]resource.Quantity
+		for _, sub := range req.FirstAvailable {
+			out = append(out, sub.Capacity.Requests)
+		}
+		return out
+	}
+	limits := func(kv ...string) corev1.ResourceList {
+		l := corev1.ResourceList{"amd.com/gpu": resource.MustParse("1")}
+		for i := 0; i < len(kv); i += 2 {
+			l[corev1.ResourceName(kv[i])] = resource.MustParse(kv[i+1])
+		}
+		return l
+	}
+	cus := func(requests map[resourceapi.QualifiedName]resource.Quantity) (int64, bool) {
+		q, ok := requests["computeUnits"]
+		return q.Value(), ok
+	}
+
+	for _, reqs := range [][]map[resourceapi.QualifiedName]resource.Quantity{
+		run(true, limits("amd.com/gpumem", "2000")),
+		run(true, limits("amd.com/gpumem-percentage", "25")),
+	} {
+		require.NotEmpty(t, reqs)
+		for _, r := range reqs {
+			n, ok := cus(r)
+			assert.True(t, ok, "a memory slice shares compute")
+			assert.Zero(t, n)
+		}
+	}
+	n, _ := cus(run(true, limits("amd.com/gpumem", "2000", "amd.com/gpucores", "50"))[0])
+	assert.Equal(t, int64(16), n, "a core request keeps its CU mask")
+	_, ok := cus(run(true, limits())[0])
+	assert.False(t, ok, "a whole GPU stays whole")
+	_, ok = cus(run(false, limits("amd.com/gpumem", "2000"))[0])
+	assert.False(t, ok, "without the setting a memory slice takes all CUs")
+}

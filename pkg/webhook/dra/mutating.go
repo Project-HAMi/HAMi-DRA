@@ -255,6 +255,8 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 			}
 		}
 
+		cfg.ShareCompute(resourceclaim.Spec.Devices.Requests[0].Exactly.Capacity.Requests, hasMem || pctQty != nil)
+
 		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
 			cleanup()
 			return nil, err

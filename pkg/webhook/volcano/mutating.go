@@ -192,6 +192,9 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memory
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
 		}
+		requests := resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests
+		_, hasMem := requests["memory"]
+		cfg.ShareCompute(requests, hasMem)
 
 		if err := a.Client.Create(ctx, resourceclaimtemplate); err != nil {
 			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)

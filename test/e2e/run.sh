@@ -42,6 +42,7 @@ helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --namespace hami-dra-system --create-namespace \
   --set 'deviceVendors={nvidia,hygon,ascend,amd}' \
   --set amdReferenceComputeUnits=32 \
+  --set amdComputeSharing=true \
   --set drivers.nvidia.enabled=false \
   --set drivers.amd.enabled=false \
   --set drivers.fake.enabled=false \
@@ -53,9 +54,9 @@ helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --wait --timeout=180s
 
 # Recreate workloads so a reused cluster exercises CREATE admission, not UPDATE.
-old_claims=$(kubectl get pod -n hami-dra-workloads multi-vendor --ignore-not-found \
-  -o jsonpath='{.spec.resourceClaims[*].resourceClaimName}')
-kubectl delete pod -n hami-dra-workloads multi-vendor no-device \
+old_claims=$(kubectl get pod -n hami-dra-workloads multi-vendor amd-share --ignore-not-found \
+  -o jsonpath='{.items[*].spec.resourceClaims[*].resourceClaimName}')
+kubectl delete pod -n hami-dra-workloads multi-vendor no-device amd-share \
   --ignore-not-found --wait=true --timeout=120s
 for claim in ${old_claims}; do
   kubectl delete -n hami-dra-workloads "resourceclaim/${claim}" \
@@ -121,3 +122,10 @@ for memory in \
 do
   test "${memory}" = 2147483648 || test "${memory}" = 2Gi
 done
+
+# With amdComputeSharing a memory slice asks for 0 CUs, so it fits next to the
+# 16-CU slice above; taking the default 32 CUs it would stay Pending.
+kubectl wait -n hami-dra-workloads pod/amd-share --for=condition=Ready --timeout=180s
+share_claim=$(kubectl get pod -n hami-dra-workloads amd-share -o jsonpath='{.spec.resourceClaims[0].resourceClaimName}')
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${share_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.computeUnits}')" = 0
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${share_claim}" -o jsonpath='{.status.allocation.devices.results[0].consumedCapacity.computeUnits}')" = 0
