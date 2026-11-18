@@ -40,7 +40,7 @@ helm install hami-dra hami-dra/hami-dra -n hami-dra --create-namespace \
 
 Create the namespace the example below uses: `kubectl create namespace workloads`.
 
-Add `nvidia`, `hygon` or `ascend` to `deviceVendors` for a mixed cluster.
+Add `nvidia`, `hygon`, `enflame` or `ascend` to `deviceVendors` for a mixed cluster.
 
 ## `amdReferenceComputeUnits`
 

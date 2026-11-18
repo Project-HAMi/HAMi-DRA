@@ -9,14 +9,14 @@ separately via enflame-dra-driver.
 
 ## Prerequisites
 
-1. Kubernetes with DRA enabled (same requirements as the main chart).
+1. Kubernetes with DRA and the `DRAConsumableCapacity` feature gate (same bar as the main chart / AMD path).
 2. [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) deployed; `DeviceClass` `gcu.enflame.com` must exist.
-3. [cert-manager](https://cert-manager.io/docs/installation/) installed.
-4. `hami-dra-webhook` image built and reachable from all nodes (override `webhook.image.*` if not using the default registry).
+3. [cert-manager](https://cert-manager.io/docs/installation/) installed (or provide your own webhook certs; see the README).
+4. `hami-dra-webhook` (and `hami-dra-monitor` if enabled) images reachable from the node (override `webhook.image.*` / `monitor.image.*` for local tags).
 
 ## Install
 
-From a local checkout:
+From a local checkout (preferred; matches `enflame-values.yaml`):
 
 ```bash
 helm install hami-dra ./charts/hami-dra \
@@ -31,7 +31,8 @@ helm install hami-dra ./charts/hami-dra \
   -n hami-system --create-namespace \
   --set 'deviceVendors={enflame}' \
   --set drivers.nvidia.enabled=false \
-  --set monitor.enabled=false
+  --set monitor.enabled=true \
+  --set certs.certManager.enabled=true
 ```
 
 From the published chart:
@@ -41,7 +42,8 @@ helm install hami-dra hami-dra/hami-dra \
   -n hami-system --create-namespace \
   --set 'deviceVendors={enflame}' \
   --set drivers.nvidia.enabled=false \
-  --set monitor.enabled=false
+  --set monitor.enabled=true \
+  --set certs.certManager.enabled=true
 ```
 
 ## Important values
@@ -64,8 +66,21 @@ gcuDraDriverName: gcu.enflame.com
 ```
 
 enflame-dra-driver advertises both `cores` (0–100) and `memory` capacities with
-a whole-card RequestPolicy. Whole-card Pods typically request `enflame.com/gcu`
-alone; the driver fills default ConsumedCapacity.
+a whole-card-only RequestPolicy (`Default` / sole `ValidValues` = full card).
+Whole-card Pods typically request `enflame.com/gcu` alone; the scheduler then
+records ConsumedCapacity from those defaults (needed by `hami-dra-monitor`
+allocation gauges).
+
+`enflame.com/gcu-cores` is the HAMi 0–100 scale (same numbers the driver
+publishes as capacity `cores`), so the webhook leaves those values as-is and
+does not use `referenceComputeUnits` the way Hygon/AMD percentage cores do. Optional
+`enflame.com/gcu-memory` is MiB and is converted to bytes like other vendors.
+Because the driver only accepts a full-card capacity request, omit memory/cores
+on the Pod unless the values match a full card; otherwise allocation fails.
+
+The label `hami.io/skip-dra: "true"` keeps a Pod out of DRA conversion (same as
+other vendors). `webhook.config.resourceClaimTemplate` from the main chart also
+applies when you need ResourceClaimTemplate instead of ResourceClaim.
 
 ### UUID / product selection
 
@@ -112,6 +127,8 @@ The webhook strips `enflame.com/gcu` and creates a ResourceClaim against
 
 ## Monitor notes
 
-Verified against a live `gcu.enflame.com` ResourceSlice: device UUID / brand /
-productName / memory limit show up under the existing `GPUDevice*` metrics.
-Core limit/allocated stay `0` (driver has no `cores` capacity yet).
+`hami-dra-monitor` reads ResourceSlices and claim `ConsumedCapacity` generically
+(`cores` / `memory`). With enflame-dra-driver’s whole-card RequestPolicy, a
+count-only claim shows non-zero Core/Memory allocated gauges (for example
+`cores=100` and full `memory`) under the current metric names. Enable monitor
+via `enflame-values.yaml` (`monitor.enabled: true`).
