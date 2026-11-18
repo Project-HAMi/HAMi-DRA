@@ -83,6 +83,27 @@ func TestNvidiaKeepsMemoryPercentageName(t *testing.T) {
 	assert.Equal(t, "nvidia.com/gpumem-percentage", cfg.ResourceMemoryPercentageName)
 }
 
+func TestDRADeviceEnflameDefaults(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorEnflame})
+	require.NoError(t, err)
+	require.Len(t, cfgs, 1)
+	cfg := cfgs[0]
+	assert.Equal(t, VendorEnflame, cfg.Vendor)
+	assert.Equal(t, "enflame.com/gcu", cfg.ResourceCountName)
+	assert.Equal(t, "enflame.com/gcu-memory", cfg.ResourceMemoryName)
+	assert.Equal(t, "enflame.com/gcu-cores", cfg.ResourceCoreName)
+	assert.Equal(t, constants.EnflameDraDriver, cfg.EffectiveDeviceClassName())
+	assert.Equal(t, constants.EnflameDraDriver, cfg.EffectiveDraDriverName())
+	assert.Equal(t, "gcu", cfg.RequestName)
+	assert.Equal(t, constants.EnflameDeviceType, cfg.DeviceType)
+	assert.Equal(t, constants.EnflameUseUUIDAnnotation, cfg.UseUUIDAnnotation)
+	assert.Equal(t, "enflame", cfg.ClaimNameSuffix())
+	assert.Equal(t,
+		`device.driver == "gcu.enflame.com" && device.attributes["gcu.enflame.com"].type == "gcu"`,
+		cfg.TypeSelectorExpression(),
+	)
+}
+
 func TestDRADeviceAscendDefaults(t *testing.T) {
 	cfgs, err := (&Config{}).DRADevices([]string{VendorAscend})
 	assert.NoError(t, err)
@@ -147,15 +168,17 @@ func TestDRADeviceAscendEmptyResourceNameIndexes(t *testing.T) {
 }
 
 func TestDRADevicesMultipleVendors(t *testing.T) {
-	cfgs, err := (&Config{}).DRADevices([]string{VendorNvidia, VendorHygon, VendorAscend})
+	cfgs, err := (&Config{}).DRADevices([]string{VendorNvidia, VendorHygon, VendorEnflame, VendorAscend})
 	require.NoError(t, err)
-	require.Len(t, cfgs, 9)
+	require.Len(t, cfgs, 10)
 	assert.Equal(t, VendorNvidia, cfgs[0].Vendor)
 	assert.Equal(t, VendorHygon, cfgs[1].Vendor)
-	assert.Equal(t, VendorAscend, cfgs[2].Vendor)
+	assert.Equal(t, VendorEnflame, cfgs[2].Vendor)
+	assert.Equal(t, VendorAscend, cfgs[3].Vendor)
 	assert.Equal(t, "nvidia", cfgs[0].ClaimNameSuffix())
 	assert.Equal(t, "hygon", cfgs[1].ClaimNameSuffix())
-	assert.Equal(t, "ascend910a", cfgs[2].ClaimNameSuffix())
+	assert.Equal(t, "enflame", cfgs[2].ClaimNameSuffix())
+	assert.Equal(t, "ascend910a", cfgs[3].ClaimNameSuffix())
 }
 
 func TestDRADevicesValidation(t *testing.T) {

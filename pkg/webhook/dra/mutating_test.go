@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -273,6 +274,43 @@ func TestAddAnnotationSelectorsHygon(t *testing.T) {
 	assert.Equal(t, `device.attributes["dra.hygon.com"].productName in ["K100"]`, selectors[1].CEL.Expression)
 }
 
+func TestAddAnnotationSelectorsEnflame(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorEnflame})
+	require.NoError(t, err)
+	cfg := cfgs[0]
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				constants.EnflameUseUUIDAnnotation: "TR6W18220404",
+				constants.EnflameUseTypeAnnotation: "Enflame S60",
+			},
+		},
+	}
+
+	admission := &MutatingAdmission{DeviceConfig: cfg}
+	claim := &resourceapi.ResourceClaim{
+		Spec: resourceapi.ResourceClaimSpec{
+			Devices: resourceapi.DeviceClaim{
+				Requests: []resourceapi.DeviceRequest{
+					{
+						Name: "gcu",
+						Exactly: &resourceapi.ExactDeviceRequest{
+							Selectors: []resourceapi.DeviceSelector{},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, admission.addAnnotationSelectors(claim, pod, cfg))
+	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
+	assert.Len(t, selectors, 2)
+	assert.Equal(t, `device.attributes["gcu.enflame.com"].uuid in ["TR6W18220404"]`, selectors[0].CEL.Expression)
+	assert.Equal(t, `device.attributes["gcu.enflame.com"].productName in ["Enflame S60"]`, selectors[1].CEL.Expression)
+}
+
 func TestBuildResourceClaimUsesConfiguredDriver(t *testing.T) {
 	deviceConfigs, err := (&config.Config{
 		Nvidia: config.NvidiaConfig{
@@ -351,8 +389,11 @@ func TestResourceClaimNameDNS1123Label(t *testing.T) {
 	nvidia := defaultNvidiaDeviceConfig()
 	hygonConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorHygon})
 	require.NoError(t, err)
+	enflameConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorEnflame})
+	require.NoError(t, err)
 	assert.Equal(t, "ns-pod-ctr-nvidia", resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", nvidia))
 	assert.Equal(t, "ns-pod-ctr-hygon", resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", hygonConfigs[0]))
+	assert.Equal(t, "ns-pod-ctr-enflame", resourceClaimName(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}, "ctr", enflameConfigs[0]))
 }
 
 func TestHandleContainerMultipleVendors(t *testing.T) {
@@ -363,7 +404,7 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 			ResourceMemoryName: "huawei.com/Ascend310P-memory",
 			ResourceCoreName:   "huawei.com/Ascend310P-core",
 		}},
-	}}).DRADevices([]string{config.VendorNvidia, config.VendorHygon, config.VendorAscend})
+	}}).DRADevices([]string{config.VendorNvidia, config.VendorHygon, config.VendorEnflame, config.VendorAscend})
 	require.NoError(t, err)
 
 	sch := runtime.NewScheme()
@@ -378,6 +419,7 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
 			corev1.ResourceName("nvidia.com/gpu"):        resource.MustParse("1"),
 			corev1.ResourceName("hygon.com/hcunum"):      resource.MustParse("1"),
+			corev1.ResourceName("enflame.com/gcu"):       resource.MustParse("1"),
 			corev1.ResourceName("huawei.com/Ascend310P"): resource.MustParse("1"),
 		}},
 	}
@@ -387,14 +429,23 @@ func TestHandleContainerMultipleVendors(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"default-mixed-workload-nvidia",
 		"default-mixed-workload-hygon",
+		"default-mixed-workload-enflame",
 		"default-mixed-workload-ascend310p",
 	}, names)
 	assert.Empty(t, container.Resources.Limits)
 
-	for i, name := range names {
+	for _, name := range names {
 		claim := &resourceapi.ResourceClaim{}
 		require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: name}, claim))
-		assert.Equal(t, deviceConfigs[i].EffectiveDeviceClassName(), claim.Spec.Devices.Requests[0].Exactly.DeviceClassName)
+		found := false
+		for _, cfg := range deviceConfigs {
+			if cfg.EffectiveDeviceClassName() == claim.Spec.Devices.Requests[0].Exactly.DeviceClassName &&
+				strings.HasSuffix(name, "-"+cfg.ClaimNameSuffix()) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "claim %s should match a configured vendor", name)
 	}
 }
 

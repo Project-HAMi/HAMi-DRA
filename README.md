@@ -57,6 +57,10 @@ Then [use the same as hami](https://project-hami.io/zh/docs/userguide/nvidia-dev
 
 For clusters running Hygon HCU with [k8s-hcu-dra-driver](https://github.com/HYGON-AI/k8s-hcu-dra-driver), see [docs/hygon-hcu.md](./docs/hygon-hcu.md).
 
+### Enflame GCU
+
+For clusters running Enflame GCU with [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver), see [docs/enflame-gcu.md](./docs/enflame-gcu.md).
+
 ## Configuration
 
 ### Device Resources
@@ -75,12 +79,13 @@ The webhook can convert multiple device vendors in one deployment. Configure `de
 deviceVendors:
   - nvidia
   - hygon
+  - enflame
   - ascend
   - amd
 ```
 
-The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
-The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd`.
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Enflame GCU](./docs/enflame-gcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
+The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,enflame,ascend,amd`.
 
 ### ResourceClaimTemplate
 

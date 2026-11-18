@@ -1,0 +1,31 @@
+# HAMi-DRA Helm values for Enflame GCU + enflame-dra-driver
+#
+# Prerequisites:
+# - Kubernetes >= 1.34 with DynamicResourceAllocation and DRAConsumableCapacity
+# - enflame-dra-driver already deployed (DeviceClass gcu.enflame.com)
+# - cert-manager installed in cluster
+#
+# Install:
+#   helm install hami-dra ./charts/hami-dra -n hami-system --create-namespace \
+#     -f ./charts/hami-dra/enflame-values.yaml
+#
+# This overlay converts HAMi-style enflame.com/gcu (and optional gcu-memory /
+# gcu-cores) requests into ResourceClaims for gcu.enflame.com.
+
+deviceVendors:
+  - enflame
+
+drivers:
+  nvidia:
+    enabled: false
+  fake:
+    enabled: false
+  enflame:
+    enabled: false
+
+monitor:
+  enabled: true
+
+certs:
+  certManager:
+    enabled: true
