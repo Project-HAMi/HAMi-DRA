@@ -531,6 +531,26 @@ func TestHandleZeroCountRequestsNoDevice(t *testing.T) {
 	}
 }
 
+func TestHandleContainerRejectsFractionalCount(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorNvidia, config.VendorHygon})
+	require.NoError(t, err)
+	a := &MutatingAdmission{Client: fakeClient, DeviceConfigs: cfgs}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}
+	container := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+		"nvidia.com/gpu":   resource.MustParse("1"),
+		"hygon.com/hcunum": resource.MustParse("500m"),
+	}}}
+
+	_, err = a.handleContainer(context.Background(), container, pod, nil, false)
+	require.ErrorContains(t, err, "hygon.com/hcunum must be a whole number")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, fakeClient.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "the claim created for the other vendor must be rolled back")
+}
+
 func TestHandleDryRunSkipsPersistentWrites(t *testing.T) {
 	tests := []struct {
 		name     string

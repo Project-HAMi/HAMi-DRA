@@ -105,6 +105,11 @@ func TestExtendedResourceWarningsCoversCoreAndMemory(t *testing.T) {
 		{"memory stripped with count", limits(cfg.ResourceCountName, cfg.ResourceMemoryName), 1},
 		{"core stripped with count", limits(cfg.ResourceCountName, cfg.ResourceCoreName), 1},
 		{"memory kept without count", limits(cfg.ResourceMemoryName), 0},
+		{"zero count is not converted", func() []corev1.Container {
+			c := limits(cfg.ResourceCountName, cfg.ResourceMemoryName)
+			c[0].Resources.Limits[corev1.ResourceName(cfg.ResourceCountName)] = resource.MustParse("0")
+			return c
+		}(), 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			extended := cfg.ResourceMemoryName

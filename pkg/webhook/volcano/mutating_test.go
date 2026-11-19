@@ -207,37 +207,6 @@ func TestHandleTaskProcessesAllContainers(t *testing.T) {
 	assert.Empty(t, task.Template.Spec.Containers[1].Resources.Claims, "cpu-only container should be untouched")
 }
 
-func TestHandleTaskZeroCountRequestsNoDevice(t *testing.T) {
-	sch := runtime.NewScheme()
-	require.NoError(t, scheme.AddToScheme(sch))
-	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
-	admission := &MutatingAdmission{
-		Client: fakeClient,
-		DeviceConfig: &config.DRADeviceConfig{
-			ResourceCountName: "nvidia.com/gpu",
-			RequestName:       "gpu",
-		},
-	}
-	task := &vcv1alpha1.TaskSpec{
-		Name: "t",
-		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
-			Name: "c",
-			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
-				corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("0"),
-			}},
-		}}}},
-	}
-	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
-
-	names, err := admission.handleTask(context.Background(), task, job)
-	require.NoError(t, err)
-	assert.Empty(t, names)
-	assert.Empty(t, task.Template.Spec.Containers[0].Resources.Claims)
-	templates := &resourceapi.ResourceClaimTemplateList{}
-	require.NoError(t, fakeClient.List(context.Background(), templates))
-	assert.Empty(t, templates.Items)
-}
-
 func TestHandleCleansUpTemplatesOnPartialFailure(t *testing.T) {
 	sch := runtime.NewScheme()
 	require.NoError(t, scheme.AddToScheme(sch))
