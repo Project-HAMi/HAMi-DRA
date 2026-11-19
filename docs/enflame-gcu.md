@@ -1,16 +1,18 @@
 # Enflame GCU
 
-Deploy HAMi-DRA webhook for Enflame GCU clusters that already run
-[enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver).
+Deploy HAMi-DRA webhook (and optional monitor) for Enflame GCU clusters that
+already run
+[enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver)
+(repository is not public yet).
 
-This chart deploys only the mutating/validating webhook and TLS certificates.
-The GCU DRA driver and `DeviceClass` (`gcu.enflame.com`) must be deployed
-separately via enflame-dra-driver.
+This chart deploys the mutating/validating webhook, TLS certificates, and
+(when enabled) `hami-dra-monitor`. The GCU DRA driver and `DeviceClass`
+(`gcu.enflame.com`) must be deployed separately via enflame-dra-driver.
 
 ## Prerequisites
 
 1. Kubernetes with DRA and the `DRAConsumableCapacity` feature gate (same bar as the main chart / AMD path).
-2. [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) deployed; `DeviceClass` `gcu.enflame.com` must exist.
+2. [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) deployed; `DeviceClass` `gcu.enflame.com` must exist. The driver repository is not public yet.
 3. [cert-manager](https://cert-manager.io/docs/installation/) installed (or provide your own webhook certs; see the README).
 4. `hami-dra-webhook` (and `hami-dra-monitor` if enabled) images reachable from the node (override `webhook.image.*` / `monitor.image.*` for local tags).
 
@@ -35,16 +37,8 @@ helm install hami-dra ./charts/hami-dra \
   --set certs.certManager.enabled=true
 ```
 
-From the published chart:
-
-```bash
-helm install hami-dra hami-dra/hami-dra \
-  -n hami-system --create-namespace \
-  --set 'deviceVendors={enflame}' \
-  --set drivers.nvidia.enabled=false \
-  --set monitor.enabled=true \
-  --set certs.certManager.enabled=true
-```
+Published Helm chart install is not available yet for Enflame (use a local
+checkout until a release that includes this vendor ships).
 
 ## Important values
 
@@ -60,38 +54,36 @@ GCU resource names and driver identifiers use chart defaults in `values.yaml`:
 ```yaml
 gcuResourceName: "enflame.com/gcu"
 gcuResourceMem: "enflame.com/gcu-memory"
-gcuResourceCores: "enflame.com/gcu-cores"
+gcuResourceCores: "enflame.com/gcu-core"
 gcuDeviceClassName: gcu.enflame.com
 gcuDraDriverName: gcu.enflame.com
 ```
 
 enflame-dra-driver advertises both `cores` (0–100) and `memory` capacities with
 a whole-card-only RequestPolicy (`Default` / sole `ValidValues` = full card).
-Whole-card Pods typically request `enflame.com/gcu` alone; the scheduler then
-records ConsumedCapacity from those defaults (needed by `hami-dra-monitor`
-allocation gauges).
 
-`enflame.com/gcu-cores` is the HAMi 0–100 scale (same numbers the driver
-publishes as capacity `cores`), so the webhook leaves those values as-is and
-does not use `referenceComputeUnits` the way Hygon/AMD percentage cores do. Optional
-`enflame.com/gcu-memory` is MiB and is converted to bytes like other vendors.
-Because the driver only accepts a full-card capacity request, omit memory/cores
-on the Pod unless the values match a full card; otherwise allocation fails.
+- Request only `enflame.com/gcu` (count): the claim uses the driver’s Default
+  capacities, so the scheduler records full-card `ConsumedCapacity` (needed by
+  `hami-dra-monitor` allocation gauges).
+- Optional `enflame.com/gcu-core` is the HAMi 0–100 scale (same numbers the
+  driver publishes as capacity `cores`); the webhook leaves those values as-is
+  and does not use `referenceComputeUnits` the way Hygon/AMD percentage cores
+  do. Optional `enflame.com/gcu-memory` is MiB and is converted to bytes like
+  other vendors. If those optional resources are set to anything other than a
+  full card, the claim will not allocate under the current RequestPolicy.
 
 The label `hami.io/skip-dra: "true"` keeps a Pod out of DRA conversion (same as
 other vendors). `webhook.config.resourceClaimTemplate` from the main chart also
 applies when you need ResourceClaimTemplate instead of ResourceClaim.
 
-### UUID / product selection
+### UUID selection
 
-Same annotation style as HAMi Enflame:
+HAMi Enflame UUID annotations:
 
 | Annotation | Effect |
 |------------|--------|
 | `enflame.com/use-gpuuuid` | Restrict claim to listed UUIDs |
 | `enflame.com/nouse-gpuuuid` | Exclude listed UUIDs |
-| `enflame.com/use-gcutype` | Match `productName` (e.g. `Enflame S60`) |
-| `enflame.com/nouse-gcutype` | Exclude product names |
 
 ## Example Pod
 
@@ -100,8 +92,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: gcu-job
-  annotations:
-    enflame.com/use-gpuuuid: TR6W18220404
 spec:
   containers:
   - name: app

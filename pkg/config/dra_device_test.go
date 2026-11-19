@@ -91,7 +91,7 @@ func TestDRADeviceEnflameDefaults(t *testing.T) {
 	assert.Equal(t, VendorEnflame, cfg.Vendor)
 	assert.Equal(t, "enflame.com/gcu", cfg.ResourceCountName)
 	assert.Equal(t, "enflame.com/gcu-memory", cfg.ResourceMemoryName)
-	assert.Equal(t, "enflame.com/gcu-cores", cfg.ResourceCoreName)
+	assert.Equal(t, "enflame.com/gcu-core", cfg.ResourceCoreName)
 	assert.Equal(t, constants.EnflameDraDriver, cfg.EffectiveDeviceClassName())
 	assert.Equal(t, constants.EnflameDraDriver, cfg.EffectiveDraDriverName())
 	assert.Equal(t, "gcu", cfg.RequestName)

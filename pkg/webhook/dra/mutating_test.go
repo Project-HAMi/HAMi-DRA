@@ -306,7 +306,7 @@ func TestAddAnnotationSelectorsEnflame(t *testing.T) {
 
 	require.NoError(t, admission.addAnnotationSelectors(claim, pod, cfg))
 	selectors := claim.Spec.Devices.Requests[0].Exactly.Selectors
-	assert.Len(t, selectors, 2)
+	require.Len(t, selectors, 2)
 	assert.Equal(t, `device.attributes["gcu.enflame.com"].uuid in ["TR6W18220404"]`, selectors[0].CEL.Expression)
 	assert.Equal(t, `device.attributes["gcu.enflame.com"].productName in ["Enflame S60"]`, selectors[1].CEL.Expression)
 }

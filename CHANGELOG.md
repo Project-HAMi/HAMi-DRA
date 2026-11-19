@@ -4,7 +4,7 @@
 
 ### Added
 
-- Enflame GCU: `enflame.com/gcu` (and optional `enflame.com/gcu-memory` / `enflame.com/gcu-cores`) requests are converted for [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) (`deviceVendors` with `enflame`). Driver/DeviceClass stay external; see [docs/enflame-gcu.md](docs/enflame-gcu.md) and `charts/hami-dra/enflame-values.yaml`.
+- Enflame GCU: `enflame.com/gcu` (and optional `enflame.com/gcu-memory` / `enflame.com/gcu-core`) requests are converted for [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) (`deviceVendors` with `enflame`). Driver/DeviceClass stay external; see [docs/enflame-gcu.md](docs/enflame-gcu.md) and `charts/hami-dra/enflame-values.yaml`.
 
 ## v0.2.4
 

@@ -53,7 +53,7 @@ deviceVendors:
 # Driver and DeviceClass come from enflame-dra-driver (gcu.enflame.com).
 gcuResourceName: "enflame.com/gcu"
 gcuResourceMem: "enflame.com/gcu-memory"
-gcuResourceCores: "enflame.com/gcu-cores"
+gcuResourceCores: "enflame.com/gcu-core"
 gcuDeviceClassName: gcu.enflame.com
 gcuDraDriverName: gcu.enflame.com
 

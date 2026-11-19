@@ -237,7 +237,7 @@ func draDeviceFromEnflame(c *EnflameConfig) *DRADeviceConfig {
 		Vendor:              VendorEnflame,
 		ResourceCountName:   firstNonEmpty(c.ResourceCountName, "enflame.com/gcu"),
 		ResourceMemoryName:  firstNonEmpty(c.ResourceMemoryName, "enflame.com/gcu-memory"),
-		ResourceCoreName:    firstNonEmpty(c.ResourceCoreName, "enflame.com/gcu-cores"),
+		ResourceCoreName:    firstNonEmpty(c.ResourceCoreName, "enflame.com/gcu-core"),
 		DeviceClassName:     firstNonEmpty(c.DeviceClassName, constants.EnflameDraDriver),
 		DraDriverName:       firstNonEmpty(c.DraDriverName, constants.EnflameDraDriver),
 		RequestName:         firstNonEmpty(c.RequestName, "gcu"),
