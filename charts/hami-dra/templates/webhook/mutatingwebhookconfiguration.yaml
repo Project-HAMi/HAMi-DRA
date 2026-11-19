@@ -125,5 +125,44 @@ webhooks:
             - {{ $ns | quote }}
 {{- end }}
 {{- end }}
+  # Re-applying a converted job brings the converted resources back; strip them
+  # again so Volcano, which rejects most task changes, accepts the update.
+  - name: mutate-volcano-update.hami.io
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      {{- if and (not .Values.certs.certManager.enabled) .Values.certs.custom.caBundle }}
+      caBundle: {{ .Values.certs.custom.caBundle }}
+      {{- end }}
+      service:
+        name: {{ .Release.Name }}-dra-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-volcano
+    rules:
+      - apiGroups:
+          - batch.volcano.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - UPDATE
+        resources:
+          - jobs
+        scope: '*'
+    objectSelector:
+      matchExpressions:
+        - key: hami.io/dra
+          operator: Exists
+    sideEffects: None
+    timeoutSeconds: 10
+    failurePolicy: Ignore
+{{- if .Values.webhook.config.scope.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+{{- range $ns := $excludedNamespaces }}
+            - {{ $ns | quote }}
+{{- end }}
+{{- end }}
 {{- end -}}
 {{- end }}
