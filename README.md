@@ -11,7 +11,7 @@ This webhook automatically transforms Pod specifications that request GPU resour
 - **Automatic Resource Conversion**: Converts GPU resource requests to ResourceClaims
 - **Resource Cleanup**: Automatically removes GPU resources from Pod specs and creates corresponding ResourceClaims
 - **Annotation Support**: Supports device selection via Pod annotations (UUID, device type)
-- **Multi-vendor**: NVIDIA, Hygon HCU, AMD and Ascend NPU in one deployment
+- **Multi-vendor**: NVIDIA, Hygon HCU, AMD, Ascend NPU and Tsingmicro RPU in one deployment
 - **Metrics Monitoring**: Optional monitor component that collects and exposes GPU resource metrics via Prometheus
 - **Fake Driver**: A fake DRA driver for testing without GPU hardware, see [docs/fake-dra-driver.md](./docs/fake-dra-driver.md)
 
@@ -77,10 +77,11 @@ deviceVendors:
   - hygon
   - ascend
   - amd
+  - tsingmicro
 ```
 
-The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md) and [AMD GPUs](./docs/amd-dra.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
-The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd`.
+The former single-value `deviceVendor` setting has been removed. See [Hygon HCU](./docs/hygon-hcu.md), [Ascend DRA](./docs/ascend-dra.md), [AMD GPUs](./docs/amd-dra.md) and [Tsingmicro RPU](./docs/tsingmicro-rpu.md). For AMD, add `amd` to `deviceVendors`, and enable `drivers.amd`. Set `amdReferenceComputeUnits` when the AMD GPUs differ in size (see [AMD GPUs](./docs/amd-dra.md)).
+The generated webhook configuration uses the equivalent `vendors` list. Direct webhook deployments can override it with `--device-vendors=nvidia,hygon,ascend,amd,tsingmicro`.
 
 ### ResourceClaimTemplate
 

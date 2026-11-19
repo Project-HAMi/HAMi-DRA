@@ -128,6 +128,29 @@ data:
                   default: "0"
                   validRange: {min: "0"}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fake-tsingmicro
+  namespace: hami-dra-e2e
+data:
+  config.yaml: |
+    groups:
+      - name: tsingmicro
+        devices:
+          - name: rpu-0
+            allowMultipleAllocations: true
+            attributes:
+              type: {string: rpu}
+              uuid: {string: RPU-FAKE-0}
+              productName: {string: TX8110-256-00}
+            capacity:
+              memory:
+                value: 64Gi
+                requestPolicy:
+                  default: 64Gi
+                  validRange: {min: 1Mi, step: 1Mi}
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -199,6 +222,19 @@ spec:
             - --kubelet-plugins-directory-path=/var/lib/kubelet/plugins
           env: *nodeEnv
           volumeMounts: *pluginMounts
+        - name: tsingmicro
+          image: hami-dra-fake-driver:e2e
+          imagePullPolicy: Never
+          args:
+            - --node-name=$(NODE_NAME)
+            - --driver-name=rpu.tsingmicro.com
+            - --configmap-name=fake-tsingmicro
+            - --configmap-namespace=hami-dra-e2e
+            - --configmap-key=config.yaml
+            - --kubelet-registrar-directory-path=/var/lib/kubelet/plugins_registry
+            - --kubelet-plugins-directory-path=/var/lib/kubelet/plugins
+          env: *nodeEnv
+          volumeMounts: *pluginMounts
       volumes:
         - name: registry
           hostPath: {path: /var/lib/kubelet/plugins_registry, type: DirectoryOrCreate}
@@ -240,3 +276,12 @@ spec:
   selectors:
     - cel:
         expression: device.driver == "gpu.amd.com" && device.attributes["gpu.amd.com"].type == "amdgpu"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: rpu.tsingmicro.com
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "rpu.tsingmicro.com" && device.attributes["rpu.tsingmicro.com"].type == "rpu"

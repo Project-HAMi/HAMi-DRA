@@ -29,7 +29,7 @@ trap diagnostics ERR
 kubectl apply -f "${repo_root}/test/e2e/fake-multi-vendor.yaml"
 kubectl rollout status -n hami-dra-e2e daemonset/fake-drivers --timeout=120s
 
-for driver in hami-core-gpu.project-hami.io dra.hygon.com ascend.project-hami.io gpu.amd.com; do
+for driver in hami-core-gpu.project-hami.io dra.hygon.com ascend.project-hami.io gpu.amd.com rpu.tsingmicro.com; do
   for _ in $(seq 1 60); do
     slice=$(kubectl get resourceslices -o jsonpath="{.items[?(@.spec.driver=='${driver}')].metadata.name}" | awk '{print $1}')
     test -n "${slice}" && break
@@ -40,7 +40,7 @@ done
 
 helm upgrade --install hami-dra "${repo_root}/charts/hami-dra" \
   --namespace hami-dra-system --create-namespace \
-  --set 'deviceVendors={nvidia,hygon,ascend,amd}' \
+  --set 'deviceVendors={nvidia,hygon,ascend,amd,tsingmicro}' \
   --set amdReferenceComputeUnits=32 \
   --set drivers.nvidia.enabled=false \
   --set drivers.amd.enabled=false \
@@ -69,8 +69,8 @@ test -z "$(kubectl get pod -n hami-dra-workloads no-device -o jsonpath='{.spec.r
 test -z "$(kubectl get pod -n hami-dra-workloads no-device -o jsonpath='{.metadata.labels.hami\.io/dra}')"
 
 claims=$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath='{.spec.resourceClaims[*].resourceClaimName}')
-test "$(wc -w <<<"${claims}" | tr -d ' ')" = 4
-for suffix in nvidia hygon ascend310p amd; do
+test "$(wc -w <<<"${claims}" | tr -d ' ')" = 5
+for suffix in nvidia hygon ascend310p amd tsingmicro; do
   grep -q -- "-${suffix}" <<<"${claims}"
 done
 
@@ -84,6 +84,12 @@ for resource in gpu gpumem gpucores; do
   done
 done
 
+for resource in rpu rpumem; do
+  for field in requests limits; do
+    test -z "$(kubectl get pod -n hami-dra-workloads multi-vendor -o jsonpath="{.spec.containers[0].resources.${field}.rpu\\.tsingmicro\\.com/${resource}}")"
+  done
+done
+
 for claim in ${claims}; do
   kubectl wait -n hami-dra-workloads "resourceclaim/${claim}" --for=jsonpath='{.status.allocation}' --timeout=180s
 done
@@ -93,12 +99,14 @@ declare -A expected_classes=(
   [hygon]=dra.hygon.com
   [ascend310p]=hami-vnpu-core.project-hami.io
   [amd]=gpu.amd.com
+  [tsingmicro]=rpu.tsingmicro.com
 )
 declare -A expected_drivers=(
   [nvidia]=hami-core-gpu.project-hami.io
   [hygon]=dra.hygon.com
   [ascend310p]=ascend.project-hami.io
   [amd]=gpu.amd.com
+  [tsingmicro]=rpu.tsingmicro.com
 )
 for suffix in "${!expected_classes[@]}"; do
   claim=$(tr ' ' '\n' <<<"${claims}" | grep -- "-${suffix}$")
@@ -118,6 +126,18 @@ test "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpa
 for memory in \
   "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.memory}')" \
   "$(kubectl get -n hami-dra-workloads "resourceclaim/${amd_claim}" -o jsonpath='{.status.allocation.devices.results[0].consumedCapacity.memory}')"
+do
+  test "${memory}" = 2147483648 || test "${memory}" = 2Gi
+done
+
+# Tsingmicro rpumem is MiB; 2048 MiB consumes 2Gi of the fake 64Gi RPU. There is
+# no cores capacity for RPUs, so only memory appears in the claim.
+tsingmicro_claim=$(tr ' ' '\n' <<<"${claims}" | grep -- '-tsingmicro$')
+test "$(kubectl get -n hami-dra-workloads "resourceclaim/${tsingmicro_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.count}')" = 1
+test -z "$(kubectl get -n hami-dra-workloads "resourceclaim/${tsingmicro_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.cores}')"
+for memory in \
+  "$(kubectl get -n hami-dra-workloads "resourceclaim/${tsingmicro_claim}" -o jsonpath='{.spec.devices.requests[0].exactly.capacity.requests.memory}')" \
+  "$(kubectl get -n hami-dra-workloads "resourceclaim/${tsingmicro_claim}" -o jsonpath='{.status.allocation.devices.results[0].consumedCapacity.memory}')"
 do
   test "${memory}" = 2147483648 || test "${memory}" = 2Gi
 done

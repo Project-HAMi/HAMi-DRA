@@ -25,6 +25,8 @@ spec:
           amd.com/gpu: "1"
           amd.com/gpumem: "2048"
           amd.com/gpucores: "50"
+          rpu.tsingmicro.com/rpu: "1"
+          rpu.tsingmicro.com/rpumem: "2048"
 ---
 apiVersion: v1
 kind: Pod
