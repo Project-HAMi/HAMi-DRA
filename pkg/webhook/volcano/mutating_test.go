@@ -281,6 +281,7 @@ func TestBuildResourceClaimTemplateUsesConfiguredDriver(t *testing.T) {
 	exactly := template.Spec.Spec.Devices.Requests[0].Exactly
 
 	assert.Equal(t, "fake-gpu.project-hami.io", exactly.DeviceClassName)
+	assert.Equal(t, "true", template.Labels[constants.DraLabel])
 	assert.Len(t, exactly.Selectors, 1)
 	assert.Equal(t,
 		`device.attributes["fake.dra.hami.io"].type == "hami-gpu"`,

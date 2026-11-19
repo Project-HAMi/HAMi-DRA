@@ -229,6 +229,8 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, c
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			// The label lets job deletion remove only templates this webhook created.
+			Labels: map[string]string{constants.DraLabel: "true"},
 		},
 		Spec: resourceapi.ResourceClaimTemplateSpec{
 			Spec: resourceapi.ResourceClaimSpec{
