@@ -28,10 +28,11 @@ import (
 )
 
 const (
-	VendorNvidia = "nvidia"
-	VendorHygon  = "hygon"
-	VendorAscend = "ascend"
-	VendorAMD    = "amd"
+	VendorNvidia  = "nvidia"
+	VendorHygon   = "hygon"
+	VendorAscend  = "ascend"
+	VendorAMD     = "amd"
+	VendorEnflame = "enflame"
 )
 
 // DRADeviceConfig holds runtime settings for converting device-plugin resources to DRA claims.
@@ -103,7 +104,7 @@ func (c *DRADeviceConfig) TypeSelectorExpression() string {
 
 func (c *DRADeviceConfig) selectorIncludesDriver() bool {
 	switch c.DeviceType {
-	case constants.HygonDeviceType, constants.AmdDeviceType, constants.AscendHAMivNPUCoreDeviceType:
+	case constants.HygonDeviceType, constants.AmdDeviceType, constants.EnflameDeviceType, constants.AscendHAMivNPUCoreDeviceType:
 		return true
 	default:
 		return false
@@ -225,6 +226,26 @@ func draDeviceFromAMD(c *AmdConfig) *DRADeviceConfig {
 		NoUseTypeAnnotation:          firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
 		TypeSubstringMatch:           true,
 		ReferenceComputeUnits:        c.ReferenceComputeUnits,
+	}
+}
+
+func draDeviceFromEnflame(c *EnflameConfig) *DRADeviceConfig {
+	if c == nil {
+		c = &EnflameConfig{}
+	}
+	return &DRADeviceConfig{
+		Vendor:              VendorEnflame,
+		ResourceCountName:   firstNonEmpty(c.ResourceCountName, "enflame.com/gcu"),
+		ResourceMemoryName:  firstNonEmpty(c.ResourceMemoryName, "enflame.com/gcu-memory"),
+		ResourceCoreName:    firstNonEmpty(c.ResourceCoreName, "enflame.com/gcu-core"),
+		DeviceClassName:     firstNonEmpty(c.DeviceClassName, constants.EnflameDraDriver),
+		DraDriverName:       firstNonEmpty(c.DraDriverName, constants.EnflameDraDriver),
+		RequestName:         firstNonEmpty(c.RequestName, "gcu"),
+		DeviceType:          constants.EnflameDeviceType,
+		UseUUIDAnnotation:   firstNonEmpty(c.UseUUIDAnnotation, constants.EnflameUseUUIDAnnotation),
+		NoUseUUIDAnnotation: firstNonEmpty(c.NoUseUUIDAnnotation, constants.EnflameNoUseUUIDAnnotation),
+		UseTypeAnnotation:   firstNonEmpty(c.UseTypeAnnotation, constants.EnflameUseTypeAnnotation),
+		NoUseTypeAnnotation: firstNonEmpty(c.NoUseTypeAnnotation, constants.EnflameNoUseTypeAnnotation),
 	}
 }
 
@@ -358,6 +379,8 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			configs = []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}
 		case VendorAMD:
 			configs = []*DRADeviceConfig{draDeviceFromAMD(&c.Amd)}
+		case VendorEnflame:
+			configs = []*DRADeviceConfig{draDeviceFromEnflame(&c.Enflame)}
 		case VendorAscend:
 			var emptyIndexes []int
 			configs, emptyIndexes = draDevicesFromAscend(&c.Ascend)

@@ -46,6 +46,15 @@ const (
 	AmdUseTypeAnnotation   = "amd.com/use-gputype"
 	AmdNoUseTypeAnnotation = "amd.com/nouse-gputype"
 
+	// Enflame GCU DRA driver (enflame-dra-driver).
+	EnflameDraDriver  = "gcu.enflame.com"
+	EnflameDeviceType = "gcu"
+
+	EnflameUseUUIDAnnotation   = "enflame.com/use-gpuuuid"
+	EnflameNoUseUUIDAnnotation = "enflame.com/nouse-gpuuuid"
+	EnflameUseTypeAnnotation   = "enflame.com/use-gcutype"
+	EnflameNoUseTypeAnnotation = "enflame.com/nouse-gcutype"
+
 	// Ascend DRA driver (ascend-dra-driver). HAMivNPUCore is the currently
 	// validated allocation mode; traditional full-card / vNPU DeviceClasses
 	// can be added later via firstAvailable without changing these names.
