@@ -22,12 +22,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
@@ -69,6 +72,10 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	}
 
 	klog.V(5).Infof("Mutating volcano job(%s/%s) for request: %s", req.Namespace, job.Name, req.Operation)
+	// A re-applied job gets its device resources back, and since jobs are
+	// patched as JSON merge patches it loses the claims added at creation.
+	// Converting it again reuses the job's templates and restores the claims.
+	update := req.Operation == admissionv1.Update
 	var containers []corev1.Container
 	for _, task := range job.Spec.Tasks {
 		containers = append(containers, task.Template.Spec.Containers...)
@@ -77,43 +84,57 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 	for _, w := range warnings {
 		klog.Warningf("Job(%s/%s): %s", req.Namespace, job.Name, w)
 	}
-	needPatch := false
-	rctNameList := []string{}
-
-	for i := range job.Spec.Tasks {
-		task := &job.Spec.Tasks[i]
-		rctNames, err := a.handleTask(ctx, task, job)
-		if err != nil {
-			a.deleteResourceClaimTemplates(ctx, job.Namespace, append(rctNameList, rctNames...))
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-		for _, rctName := range rctNames {
-			needPatch = true
-			rctNameList = append(rctNameList, rctName)
-			task.Template.Spec.ResourceClaims = append(task.Template.Spec.ResourceClaims, corev1.PodResourceClaim{
-				Name:                      rctName,
-				ResourceClaimTemplateName: &rctName,
-			})
-		}
+	rctNameList, err := a.convertJob(ctx, job, update)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
 	}
-
 	klog.V(5).InfoS("Job after patching", "job", job)
-	if !needPatch {
+	if len(rctNameList) == 0 {
 		klog.V(5).Infof("No need to patch Job(%s/%s) for request: %s", req.Namespace, job.Name, req.Operation)
 		return admission.Allowed("")
 	}
 
-	if job.Labels == nil {
-		job.Labels = make(map[string]string)
-	}
-	job.Labels[constants.DraLabel] = "true"
-
 	marshaledBytes, err := json.Marshal(job)
 	if err != nil {
-		a.deleteResourceClaimTemplates(ctx, job.Namespace, rctNameList)
+		if !update {
+			a.deleteResourceClaimTemplates(ctx, job.Namespace, rctNameList)
+		}
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
+}
+
+// convertJob moves the device resources of every task to templates and
+// returns their names. On create, a failure removes the templates made so far;
+// on update they belong to the running job and are kept.
+func (a *MutatingAdmission) convertJob(ctx context.Context, job *vcv1alpha1.Job, update bool) ([]string, error) {
+	var rctNameList []string
+	for i := range job.Spec.Tasks {
+		task := &job.Spec.Tasks[i]
+		rctNames, err := a.handleTask(ctx, task, job)
+		if err != nil {
+			if !update {
+				a.deleteResourceClaimTemplates(ctx, job.Namespace, append(rctNameList, rctNames...))
+			}
+			return nil, err
+		}
+		for _, rctName := range rctNames {
+			rctNameList = append(rctNameList, rctName)
+			if !slices.ContainsFunc(task.Template.Spec.ResourceClaims, func(c corev1.PodResourceClaim) bool { return c.Name == rctName }) {
+				task.Template.Spec.ResourceClaims = append(task.Template.Spec.ResourceClaims, corev1.PodResourceClaim{
+					Name:                      rctName,
+					ResourceClaimTemplateName: &rctName,
+				})
+			}
+		}
+	}
+	if len(rctNameList) > 0 {
+		if job.Labels == nil {
+			job.Labels = make(map[string]string)
+		}
+		job.Labels[constants.DraLabel] = "true"
+	}
+	return rctNameList, nil
 }
 
 // deleteResourceClaimTemplates removes templates created earlier in the same
@@ -152,13 +173,18 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	}
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job))
+		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job), task.Template.Annotations)
 		rctNames = append(rctNames, names...)
 		if err != nil {
 			return rctNames, err
 		}
 	}
 	return rctNames, nil
+}
+
+// podPath runs the conversion steps shared with the Pod path.
+func (a *MutatingAdmission) podPath() *dra.MutatingAdmission {
+	return &dra.MutatingAdmission{Client: a.Client, DeviceConfig: a.DeviceConfig, DeviceConfigs: a.DeviceConfigs}
 }
 
 // createTemplate creates want. A job rejected after this webhook (for example
@@ -193,7 +219,7 @@ func jobOwner(job *vcv1alpha1.Job) string {
 	return job.GenerateName
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string) ([]string, error) {
+func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string, annotations map[string]string) ([]string, error) {
 	var rctNames []string
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
@@ -214,13 +240,14 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		a.removeResource(container, countResourceName)
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
-			converted, err := cfg.ConvertCores(coreQty)
+			converted, err := a.podPath().CoreCapacity(ctx, cfg, coreQty)
 			if err != nil {
 				return rctNames, err
 			}
 			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests[resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())] = converted
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
 		}
+		_, hasMem := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]
 		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
 			memory, err := cfg.ConvertMemory(memQty)
 			if err != nil {
@@ -229,12 +256,27 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memory
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
 		}
+		var pctQty *resource.Quantity
+		if pctName := corev1.ResourceName(cfg.ResourceMemoryPercentageName); pctName != "" {
+			if q, ok := container.Resources.Limits[pctName]; ok {
+				a.removeResource(container, pctName)
+				// As in HAMi, an absolute memory request wins over a percentage.
+				if !hasMem {
+					pctQty = &q
+				}
+			}
+		}
+		if err := a.podPath().CompleteClaimSpec(ctx, &resourceclaimtemplate.Spec.Spec, annotations, cfg, pctQty); err != nil {
+			return rctNames, err
+		}
 
 		if err := a.createTemplate(ctx, resourceclaimtemplate, owner); err != nil {
 			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
 		}
 
-		container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rctName})
+		if !slices.ContainsFunc(container.Resources.Claims, func(c corev1.ResourceClaim) bool { return c.Name == rctName }) {
+			container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rctName})
+		}
 
 		klog.V(4).Infof("Successfully created ResourceClaimTemplate %s/%s", namespace, rctName)
 		rctNames = append(rctNames, rctName)
