@@ -40,16 +40,25 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-func ownedTemplate(name string) *resourceapi.ResourceClaimTemplate {
+func ownedTemplate(name, owner string) *resourceapi.ResourceClaimTemplate {
 	return &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{
-		Name: name, Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"},
+		Name: name, Namespace: "default",
+		Labels:      map[string]string{constants.DraLabel: "true"},
+		Annotations: map[string]string{constants.DraOwnerAnnotation: owner},
 	}}
 }
 
 func jobDeleteRequest(t *testing.T, claims []corev1.PodResourceClaim, dryRun bool) admission.Request {
 	t.Helper()
+	return jobDeleteRequestFor(t, metav1.ObjectMeta{Name: "j"}, claims, dryRun)
+}
+
+func jobDeleteRequestFor(t *testing.T, meta metav1.ObjectMeta, claims []corev1.PodResourceClaim, dryRun bool) admission.Request {
+	t.Helper()
+	meta.Namespace = "default"
+	meta.Labels = map[string]string{constants.DraLabel: "true"}
 	job := &vcv1alpha1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default", Labels: map[string]string{constants.DraLabel: "true"}},
+		ObjectMeta: meta,
 		Spec: vcv1alpha1.JobSpec{Tasks: []vcv1alpha1.TaskSpec{{
 			Name:     "worker",
 			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{ResourceClaims: claims}},
@@ -84,7 +93,7 @@ func templateExists(t *testing.T, c client.Client, name string) bool {
 }
 
 func TestValidatingHandleDryRunKeepsTemplates(t *testing.T) {
-	v, c := newValidating(t, ownedTemplate("default-j-main"))
+	v, c := newValidating(t, ownedTemplate("default-j-main", "j"))
 	req := jobDeleteRequest(t, []corev1.PodResourceClaim{
 		{Name: "default-j-main", ResourceClaimTemplateName: strPtr("default-j-main")},
 	}, true)
@@ -97,9 +106,12 @@ func TestValidatingHandleDeletesOnlyOwnTemplates(t *testing.T) {
 	// A user template whose name happens to start with "<namespace>-<job>-".
 	userPrefixed := &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "default-j-user", Namespace: "default"}}
 	shared := &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "team-shared", Namespace: "default"}}
-	v, c := newValidating(t, ownedTemplate("default-j-main"), userPrefixed, shared, ownedTemplate("default-j-claim"))
+	// Created by the webhook for job "j-other"; job "j" only references it.
+	otherJobs := ownedTemplate("default-j-other-worker-main", "j-other")
+	v, c := newValidating(t, ownedTemplate("default-j-main", "j"), userPrefixed, shared, ownedTemplate("default-j-claim", "j"), otherJobs)
 	req := jobDeleteRequest(t, []corev1.PodResourceClaim{
 		{Name: "default-j-main", ResourceClaimTemplateName: strPtr("default-j-main")},
+		{Name: "borrowed", ResourceClaimTemplateName: strPtr("default-j-other-worker-main")},
 		{Name: "default-j-user", ResourceClaimTemplateName: strPtr("default-j-user")},
 		{Name: "team-shared", ResourceClaimTemplateName: strPtr("team-shared")},
 		// The entry refers to a ResourceClaim, so the template sharing its name is not ours to delete.
@@ -112,4 +124,18 @@ func TestValidatingHandleDeletesOnlyOwnTemplates(t *testing.T) {
 	assert.True(t, templateExists(t, c, "default-j-user"), "unlabeled template must survive job deletion")
 	assert.True(t, templateExists(t, c, "team-shared"), "user-managed template must survive job deletion")
 	assert.True(t, templateExists(t, c, "default-j-claim"), "template referenced only by entry name must survive")
+	assert.True(t, templateExists(t, c, "default-j-other-worker-main"), "another job's template must survive")
+}
+
+func TestValidatingHandleDeletesTemplatesOfGeneratedJobName(t *testing.T) {
+	// The template was named and owned at admission, before the name was generated.
+	v, c := newValidating(t, ownedTemplate("default-x7k2p-worker-main", "train-"), ownedTemplate("default-other-worker-main", "other-"))
+	req := jobDeleteRequestFor(t, metav1.ObjectMeta{Name: "train-ab12c", GenerateName: "train-"}, []corev1.PodResourceClaim{
+		{Name: "default-x7k2p-worker-main", ResourceClaimTemplateName: strPtr("default-x7k2p-worker-main")},
+		{Name: "default-other-worker-main", ResourceClaimTemplateName: strPtr("default-other-worker-main")},
+	}, false)
+
+	require.True(t, v.Handle(context.Background(), req).Allowed)
+	assert.False(t, templateExists(t, c, "default-x7k2p-worker-main"))
+	assert.True(t, templateExists(t, c, "default-other-worker-main"))
 }

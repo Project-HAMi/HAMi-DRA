@@ -147,7 +147,7 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	}
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name)
+		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job))
 		rctNames = append(rctNames, names...)
 		if err != nil {
 			return rctNames, err
@@ -156,7 +156,16 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	return rctNames, nil
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) ([]string, error) {
+// jobOwner identifies the job a template is created for. A job created with
+// generateName has no name yet at admission, so its prefix stands in.
+func jobOwner(job *vcv1alpha1.Job) string {
+	if job.Name != "" {
+		return job.Name
+	}
+	return job.GenerateName
+}
+
+func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string) ([]string, error) {
 	var rctNames []string
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
@@ -170,7 +179,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 			raw = fmt.Sprintf("%s-%s", raw, cfg.ClaimNameSuffix())
 		}
 		rctName := truncateDNS1123Label(raw)
-		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, cfg)
+		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, owner, cfg)
 
 		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
@@ -221,7 +230,7 @@ func truncateDNS1123Label(name string) string {
 	return prefix + suffix
 }
 
-func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {
+func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace, owner string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {
 	if cfg == nil {
 		cfg = a.DeviceConfig
 	}
@@ -229,8 +238,9 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, c
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			// The label lets job deletion remove only templates this webhook created.
-			Labels: map[string]string{constants.DraLabel: "true"},
+			// Job deletion removes only templates this webhook created for that job.
+			Labels:      map[string]string{constants.DraLabel: "true"},
+			Annotations: map[string]string{constants.DraOwnerAnnotation: owner},
 		},
 		Spec: resourceapi.ResourceClaimTemplateSpec{
 			Spec: resourceapi.ResourceClaimSpec{
