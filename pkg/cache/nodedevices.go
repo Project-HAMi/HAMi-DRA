@@ -34,8 +34,9 @@ type NodeDevices struct {
 	mu     sync.RWMutex
 	Claims *ClaimsCache
 	// update serializes slice and claim events, which arrive from different
-	// informers, so a claim is never counted twice or lost in between.
-	update sync.Mutex
+	// informers, so a claim is never counted twice or lost in between. Readers
+	// take it too, so they never see a claim update half applied.
+	update sync.RWMutex
 }
 
 type NodeDeviceInfo struct {
@@ -157,6 +158,8 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 
 // GetDevices returns a copy of the devices on the node.
 func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
+	n.update.RLock()
+	defer n.update.RUnlock()
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
@@ -270,6 +273,10 @@ func (n *NodeDevices) GetAllClaims() map[string]*DeviceAllocation {
 func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 	n.update.Lock()
 	defer n.update.Unlock()
+	n.addClaim(claim)
+}
+
+func (n *NodeDevices) addClaim(claim *resourceapi.ResourceClaim) {
 	if claim.Status.Allocation == nil {
 		klog.V(5).Infof("ResourceClaim %s/%s has no allocation yet", claim.Namespace, claim.Name)
 		return
@@ -323,6 +330,10 @@ func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
 	n.update.Lock()
 	defer n.update.Unlock()
+	n.deleteClaim(claim)
+}
+
+func (n *NodeDevices) deleteClaim(claim *resourceapi.ResourceClaim) {
 	claimKey := fmt.Sprintf("%s/%s", claim.Namespace, claim.Name)
 
 	n.Claims.Mux.RLock()
@@ -367,8 +378,10 @@ func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
 }
 
 func (n *NodeDevices) onUpdateClaim(oldClaim, newClaim *resourceapi.ResourceClaim) {
-	n.onDeleteClaim(oldClaim)
-	n.onAddClaim(newClaim)
+	n.update.Lock()
+	defer n.update.Unlock()
+	n.deleteClaim(oldClaim)
+	n.addClaim(newClaim)
 }
 
 func (n *NodeDevices) increaseNodeUsage(nodeName string, result *AllocationResult) {

@@ -780,6 +780,32 @@ func TestCache_ConcurrentSliceAndClaimEvents(t *testing.T) {
 	}
 }
 
+// A claim update must not show the claim's device as free while it is applied.
+func TestCache_ClaimUpdateIsAtomic(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	c.onAddSlice(createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0"))
+	claim := createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024)
+	c.NodeDevices.onAddClaim(claim)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 2000 {
+			c.NodeDevices.onUpdateClaim(claim, claim)
+		}
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		if d := c.NodeDevices.GetDevices("node-1")[0]; d.CoresUsed != 30 {
+			t.Fatalf("CoresUsed = %d during a claim update, want 30", d.CoresUsed)
+		}
+	}
+}
+
 func TestCache_ClaimBeforeSliceIsCounted(t *testing.T) {
 	c := NewCacheWithClient(fake.NewSimpleClientset())
 
