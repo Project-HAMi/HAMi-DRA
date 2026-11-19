@@ -161,7 +161,9 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
-		if !ok {
+		// As with the device plugin, a zero count asks for no device. A claim
+		// with count 0 would be defaulted to one whole device.
+		if !ok || countQty.Value() <= 0 {
 			continue
 		}
 

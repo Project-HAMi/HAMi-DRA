@@ -492,6 +492,45 @@ func TestHandleResourceClaimTemplate(t *testing.T) {
 	}
 }
 
+func TestHandleZeroCountRequestsNoDevice(t *testing.T) {
+	for _, template := range []bool{false, true} {
+		sch := runtime.NewScheme()
+		require.NoError(t, scheme.AddToScheme(sch))
+		fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+		a := &MutatingAdmission{
+			Decoder:               admission.NewDecoder(sch),
+			Client:                fakeClient,
+			DeviceConfig:          defaultNvidiaDeviceConfig(),
+			ResourceClaimTemplate: template,
+		}
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "trainer", Namespace: "default"},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name: "worker",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("0"),
+				}},
+			}}},
+		}
+		raw, err := json.Marshal(pod)
+		require.NoError(t, err)
+		resp := a.Handle(context.Background(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+			Namespace: "default",
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: raw},
+		}})
+		require.True(t, resp.Allowed, "unexpected rejection: %v", resp.Result)
+		assert.Empty(t, resp.Patches, "template=%v: a zero count must not get a claim", template)
+
+		claims := &resourceapi.ResourceClaimList{}
+		require.NoError(t, fakeClient.List(context.Background(), claims))
+		assert.Empty(t, claims.Items)
+		templates := &resourceapi.ResourceClaimTemplateList{}
+		require.NoError(t, fakeClient.List(context.Background(), templates))
+		assert.Empty(t, templates.Items)
+	}
+}
+
 func TestHandleDryRunSkipsPersistentWrites(t *testing.T) {
 	tests := []struct {
 		name     string
