@@ -246,6 +246,12 @@ data:
       draDriverName: {{ .Values.amdDraDriverName }}
       requestName: gpu
       referenceComputeUnits: {{ .Values.amdReferenceComputeUnits }}
+    tsingmicro:
+      resourceCountName: {{ .Values.tsingmicroResourceName }}
+      resourceMemoryName: {{ .Values.tsingmicroResourceMem }}
+      deviceClassName: {{ include "hami.dra.tsingmicro.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.tsingmicro.driverName" . }}
+      requestName: rpu
     ascend:
       deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.ascend.driverName" . }}

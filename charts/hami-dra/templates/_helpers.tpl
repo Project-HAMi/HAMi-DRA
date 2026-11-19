@@ -228,6 +228,22 @@ groups:
 {{- end -}}
 {{- end -}}
 
+{{- define "hami.dra.tsingmicro.deviceClassName" -}}
+{{- if .Values.drivers.tsingmicro.deviceClassName -}}
+{{- .Values.drivers.tsingmicro.deviceClassName -}}
+{{- else -}}
+{{- .Values.tsingmicroDeviceClassName -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hami.dra.tsingmicro.driverName" -}}
+{{- if .Values.drivers.tsingmicro.driverName -}}
+{{- .Values.drivers.tsingmicro.driverName -}}
+{{- else -}}
+{{- .Values.tsingmicroDraDriverName -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "hami.dra.nvidia.deviceClassName" -}}
 {{- if and .Values.drivers.fake.enabled (not .Values.drivers.nvidia.enabled) -}}
 {{- include "hami.dra.driver.fake.deviceClassName" . -}}

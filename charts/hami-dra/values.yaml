@@ -46,8 +46,16 @@ amdDraDriverName: gpu.amd.com
 # (kubectl get resourceslice -o yaml) when the GPUs differ in size, or for
 # Volcano jobs, which do not read the ResourceSlices.
 amdReferenceComputeUnits: 0
+# Tsingmicro RPU parameters (webhook when deviceVendors contains tsingmicro).
+# Driver (dra-driver-tsingmicro-rpu) is installed separately; this chart only
+# converts rpu.tsingmicro.com extended resources into ResourceClaims. RPUs
+# publish no compute capacity, so there is no core resource.
+tsingmicroResourceName: "rpu.tsingmicro.com/rpu"
+tsingmicroResourceMem: "rpu.tsingmicro.com/rpumem"
+tsingmicroDeviceClassName: rpu.tsingmicro.com
+tsingmicroDraDriverName: rpu.tsingmicro.com
 deviceVendors:
-  - nvidia  # nvidia | hygon | amd | ascend
+  - nvidia  # nvidia | hygon | amd | ascend | tsingmicro
 
 # Ascend NPU parameters (webhook when deviceVendors contains ascend).
 # Device list matches HAMi vnpus.configs (commonWord + resource names).
@@ -342,5 +350,14 @@ drivers:
   ascend:
     # Optional DeviceClass name override used by webhook config helpers.
     # The HAMivNPUCore DeviceClass is created by ascend-dra-driver, not this chart.
+    deviceClassName: ""
+    driverName: ""
+  tsingmicro:
+    # Reserved; no Tsingmicro driver template in this chart. Deploy
+    # dra-driver-tsingmicro-rpu separately. Keep false: the driver owns
+    # DeviceClass rpu.tsingmicro.com.
+    enabled: false
+    # Override DeviceClass/driver name in webhook config only.
+    # Leave empty to use tsingmicroDeviceClassName / tsingmicroDraDriverName.
     deviceClassName: ""
     driverName: ""
