@@ -210,8 +210,16 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
-		if !ok {
+		// As with the device plugin, a zero count asks for no device. A claim
+		// with count 0 would be defaulted to one whole device.
+		if !ok || countQty.Sign() <= 0 {
 			continue
+		}
+		if countQty.MilliValue()%1000 != 0 {
+			// The API server rejects a fractional extended resource, but only
+			// after it is stripped here, so a claim would round it up.
+			cleanup()
+			return nil, fmt.Errorf("%s must be a whole number, got %s", countResourceName, countQty.String())
 		}
 
 		rcName := resourceClaimName(pod, container.Name, cfg)
