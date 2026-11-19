@@ -411,3 +411,37 @@ func TestHandleTaskUsesConfiguredCoreCapacityName(t *testing.T) {
 	assert.Contains(t, caps, resourceapi.QualifiedName("computeUnits"))
 	assert.NotContains(t, caps, resourceapi.QualifiedName("cores"))
 }
+
+// A job rejected after this webhook leaves its templates behind; resubmitting
+// it reuses them, but a same-named template of another job is not taken over.
+func TestHandleTaskReusesLeftoverTemplate(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+	admission := &MutatingAdmission{
+		Client:       fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{ResourceCountName: "nvidia.com/gpu", RequestName: "gpu"},
+	}
+	newTask := func() *vcv1alpha1.TaskSpec {
+		return &vcv1alpha1.TaskSpec{
+			Name: "t",
+			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name:      "c",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")}},
+			}}}},
+		}
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+
+	names, err := admission.handleTask(context.Background(), newTask(), job)
+	require.NoError(t, err)
+	_, err = admission.handleTask(context.Background(), newTask(), job)
+	require.NoError(t, err, "the job's own leftover template must be reused")
+
+	rct := &resourceapi.ResourceClaimTemplate{}
+	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, rct))
+	rct.Annotations[constants.DraOwnerAnnotation] = "someone-else"
+	require.NoError(t, fakeClient.Update(context.Background(), rct))
+	_, err = admission.handleTask(context.Background(), newTask(), job)
+	require.ErrorContains(t, err, "delete it to admit the job")
+}

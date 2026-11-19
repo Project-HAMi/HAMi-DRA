@@ -205,6 +205,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}
 	mutatingAdmissionVolcano.Decoder = decoder
 	mutatingAdmissionVolcano.Client = hookManager.GetClient()
+	mutatingAdmissionVolcano.Reader = hookManager.GetAPIReader()
 	mutatingAdmissionVolcano.DeviceConfig = deviceConfig
 	mutatingAdmissionVolcano.DeviceConfigs = deviceConfigs
 	hookServer.Register("/mutate-volcano", &webhook.Admission{Handler: mutatingAdmissionVolcano})
