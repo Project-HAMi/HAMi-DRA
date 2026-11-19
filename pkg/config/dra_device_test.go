@@ -225,3 +225,30 @@ func TestDRADeviceAMDWithOtherVendors(t *testing.T) {
 	_, err = (&Config{Amd: AmdConfig{ResourceCountName: "nvidia.com/gpu"}}).DRADevices([]string{VendorNvidia, VendorAMD})
 	assert.ErrorContains(t, err, "configured by both")
 }
+
+func TestDRADeviceTsingmicroDefaults(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorTsingmicro})
+	assert.NoError(t, err)
+	cfg := cfgs[0]
+	assert.Equal(t, "rpu.tsingmicro.com/rpu", cfg.ResourceCountName)
+	assert.Equal(t, "rpu.tsingmicro.com/rpumem", cfg.ResourceMemoryName)
+	// RPUs publish no compute capacity, so there is no core resource to convert
+	assert.Empty(t, cfg.ResourceCoreName)
+	assert.Equal(t, "rpu.tsingmicro.com", cfg.EffectiveDeviceClassName())
+	assert.Equal(t, "rpu.tsingmicro.com", cfg.EffectiveDraDriverName())
+	assert.Equal(t, "rpu", cfg.RequestName)
+	assert.Equal(t, "tsingmicro", cfg.ClaimNameSuffix())
+	assert.Equal(t, `device.driver == "rpu.tsingmicro.com" && device.attributes["rpu.tsingmicro.com"].type == "rpu"`, cfg.TypeSelectorExpression())
+	assert.Equal(t, "rpu.tsingmicro.com/use-rpuuuid", cfg.UseUUIDAnnotation)
+	assert.Equal(t, "rpu.tsingmicro.com/nouse-rpuuuid", cfg.NoUseUUIDAnnotation)
+	assert.Equal(t, "rpu.tsingmicro.com/use-rputype", cfg.UseTypeAnnotation)
+	assert.Equal(t, "rpu.tsingmicro.com/nouse-rputype", cfg.NoUseTypeAnnotation)
+}
+
+func TestDRADeviceTsingmicroMemoryMiBToBytes(t *testing.T) {
+	cfgs, err := (&Config{}).DRADevices([]string{VendorTsingmicro})
+	assert.NoError(t, err)
+	memory, err := cfgs[0].ConvertMemory(*resource.NewQuantity(4096, resource.DecimalSI))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4096*1024*1024), memory.Value())
+}

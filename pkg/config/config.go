@@ -92,11 +92,12 @@ const (
 type Config struct {
 	Vendors []string `yaml:"vendors"`
 	// LegacyVendor is retained only so removed configurations fail with a useful error.
-	LegacyVendor string       `yaml:"vendor"`
-	Nvidia       NvidiaConfig `yaml:"nvidia"`
-	Hygon        HygonConfig  `yaml:"hygon"`
-	Amd          AmdConfig    `yaml:"amd"`
-	Ascend       AscendConfig `yaml:"ascend"`
+	LegacyVendor string           `yaml:"vendor"`
+	Nvidia       NvidiaConfig     `yaml:"nvidia"`
+	Hygon        HygonConfig      `yaml:"hygon"`
+	Amd          AmdConfig        `yaml:"amd"`
+	Ascend       AscendConfig     `yaml:"ascend"`
+	Tsingmicro   TsingmicroConfig `yaml:"tsingmicro"`
 }
 
 // AmdConfig holds GPU DRA settings for k8s-gpu-dra-driver (gpu.amd.com).
@@ -164,6 +165,22 @@ type AscendVNPUConfig struct {
 	ResourceName       string `yaml:"resourceName"`
 	ResourceMemoryName string `yaml:"resourceMemoryName"`
 	ResourceCoreName   string `yaml:"resourceCoreName"`
+}
+
+// TsingmicroConfig holds RPU DRA settings for dra-driver-tsingmicro-rpu
+// (rpu.tsingmicro.com). Compute is not isolated on RPUs, so unlike Hygon and
+// AMD there is no core resource and no ReferenceComputeUnits.
+type TsingmicroConfig struct {
+	ResourceCountName  string `yaml:"resourceCountName"`
+	ResourceMemoryName string `yaml:"resourceMemoryName"`
+	DeviceClassName    string `yaml:"deviceClassName"`
+	DraDriverName      string `yaml:"draDriverName"`
+	RequestName        string `yaml:"requestName"`
+
+	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
+	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`
+	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
+	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
 }
 
 type NvidiaConfig struct {

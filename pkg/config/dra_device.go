@@ -28,10 +28,11 @@ import (
 )
 
 const (
-	VendorNvidia = "nvidia"
-	VendorHygon  = "hygon"
-	VendorAscend = "ascend"
-	VendorAMD    = "amd"
+	VendorNvidia     = "nvidia"
+	VendorHygon      = "hygon"
+	VendorAscend     = "ascend"
+	VendorAMD        = "amd"
+	VendorTsingmicro = "tsingmicro"
 )
 
 // DRADeviceConfig holds runtime settings for converting device-plugin resources to DRA claims.
@@ -103,7 +104,7 @@ func (c *DRADeviceConfig) TypeSelectorExpression() string {
 
 func (c *DRADeviceConfig) selectorIncludesDriver() bool {
 	switch c.DeviceType {
-	case constants.HygonDeviceType, constants.AmdDeviceType, constants.AscendHAMivNPUCoreDeviceType:
+	case constants.HygonDeviceType, constants.AmdDeviceType, constants.AscendHAMivNPUCoreDeviceType, constants.TsingmicroDeviceType:
 		return true
 	default:
 		return false
@@ -225,6 +226,28 @@ func draDeviceFromAMD(c *AmdConfig) *DRADeviceConfig {
 		NoUseTypeAnnotation:          firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
 		TypeSubstringMatch:           true,
 		ReferenceComputeUnits:        c.ReferenceComputeUnits,
+	}
+}
+
+// draDeviceFromTsingmicro builds the config for dra-driver-tsingmicro-rpu.
+// RPUs publish only the memory capacity (bytes); a request without memory
+// takes the whole RPU, with memory it shares the RPU by consumed memory.
+func draDeviceFromTsingmicro(c *TsingmicroConfig) *DRADeviceConfig {
+	if c == nil {
+		c = &TsingmicroConfig{}
+	}
+	return &DRADeviceConfig{
+		Vendor:              VendorTsingmicro,
+		ResourceCountName:   firstNonEmpty(c.ResourceCountName, "rpu.tsingmicro.com/rpu"),
+		ResourceMemoryName:  firstNonEmpty(c.ResourceMemoryName, "rpu.tsingmicro.com/rpumem"),
+		DeviceClassName:     firstNonEmpty(c.DeviceClassName, constants.TsingmicroDraDriver),
+		DraDriverName:       firstNonEmpty(c.DraDriverName, constants.TsingmicroDraDriver),
+		RequestName:         firstNonEmpty(c.RequestName, "rpu"),
+		DeviceType:          constants.TsingmicroDeviceType,
+		UseUUIDAnnotation:   firstNonEmpty(c.UseUUIDAnnotation, constants.TsingmicroUseUUIDAnnotation),
+		NoUseUUIDAnnotation: firstNonEmpty(c.NoUseUUIDAnnotation, constants.TsingmicroNoUseUUIDAnnotation),
+		UseTypeAnnotation:   firstNonEmpty(c.UseTypeAnnotation, constants.TsingmicroUseTypeAnnotation),
+		NoUseTypeAnnotation: firstNonEmpty(c.NoUseTypeAnnotation, constants.TsingmicroNoUseTypeAnnotation),
 	}
 }
 
@@ -358,6 +381,8 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			configs = []*DRADeviceConfig{draDeviceFromHygon(&c.Hygon)}
 		case VendorAMD:
 			configs = []*DRADeviceConfig{draDeviceFromAMD(&c.Amd)}
+		case VendorTsingmicro:
+			configs = []*DRADeviceConfig{draDeviceFromTsingmicro(&c.Tsingmicro)}
 		case VendorAscend:
 			var emptyIndexes []int
 			configs, emptyIndexes = draDevicesFromAscend(&c.Ascend)

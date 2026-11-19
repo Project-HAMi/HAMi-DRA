@@ -60,6 +60,17 @@ const (
 	AscendUseTypeAnnotation   = "hami.io/use-nputype"
 	AscendNoUseTypeAnnotation = "hami.io/no-use-nputype"
 
+	// Tsingmicro RPU DRA driver (dra-driver-tsingmicro-rpu). It publishes each
+	// RPU as type "rpu" (device name rpu-<mesh_id>) with the capacity memory
+	// (bytes); compute is not isolated, so there is no cores capacity.
+	TsingmicroDraDriver  = "rpu.tsingmicro.com"
+	TsingmicroDeviceType = "rpu"
+
+	TsingmicroUseUUIDAnnotation   = "rpu.tsingmicro.com/use-rpuuuid"
+	TsingmicroNoUseUUIDAnnotation = "rpu.tsingmicro.com/nouse-rpuuuid"
+	TsingmicroUseTypeAnnotation   = "rpu.tsingmicro.com/use-rputype"
+	TsingmicroNoUseTypeAnnotation = "rpu.tsingmicro.com/nouse-rputype"
+
 	DraLabel = "hami.io/dra"
 
 	DeviceAttributeUUID         = "uuid"
