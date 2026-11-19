@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync/atomic"
@@ -63,7 +64,19 @@ func NewCacheWithClient(kubeClient kubernetes.Interface) *Cache {
 	}
 }
 
-func (c *Cache) Start() error {
+// Start starts the informers, which run until Stop, and returns once both
+// caches are filled, or with an error when ctx ends first, e.g. on shutdown
+// or when the caller's sync deadline passes because the API is missing or
+// RBAC forbids the list.
+func (c *Cache) Start(ctx context.Context) error {
+	waitStop := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-c.stopCh:
+		}
+		close(waitStop)
+	}()
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(c.kubeClient, time.Hour*1)
 	c.sliceLister = informerFactory.Resource().V1().ResourceSlices().Lister()
 	c.claimLister = informerFactory.Resource().V1().ResourceClaims().Lister()
@@ -86,8 +99,8 @@ func (c *Cache) Start() error {
 	// Wait for ResourceSlice to sync completely before registering ResourceClaim handlers
 	// This ensures that all node/device information is available when processing ResourceClaim events
 	klog.V(5).Info("Waiting for ResourceSlice cache to sync")
-	if !cache.WaitForCacheSync(c.stopCh, sliceInformer.HasSynced) {
-		return fmt.Errorf("failed to sync ResourceSlice informer")
+	if !cache.WaitForCacheSync(waitStop, sliceInformer.HasSynced) {
+		return fmt.Errorf("failed to sync ResourceSlice informer: %w", context.Cause(ctx))
 	}
 	klog.V(5).Info("ResourceSlice cache synced successfully")
 
@@ -106,8 +119,8 @@ func (c *Cache) Start() error {
 	// Wait for ResourceClaim to sync
 	// Note: The informer may have already synced, but we need to ensure it's synced after handlers are registered
 	klog.V(5).Info("Waiting for ResourceClaim cache to sync")
-	if !cache.WaitForCacheSync(c.stopCh, claimInformer.HasSynced) {
-		return fmt.Errorf("failed to sync ResourceClaim informer")
+	if !cache.WaitForCacheSync(waitStop, claimInformer.HasSynced) {
+		return fmt.Errorf("failed to sync ResourceClaim informer: %w", context.Cause(ctx))
 	}
 	klog.V(5).Info("ResourceClaim cache synced successfully")
 
