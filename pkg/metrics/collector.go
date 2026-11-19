@@ -168,7 +168,7 @@ type podDevice struct {
 }
 
 type podDeviceKey struct {
-	node, deviceName, namespace, pod string
+	node, driver, deviceName, namespace, pod string
 }
 
 func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
@@ -239,7 +239,7 @@ func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
 			var device *cache.NodeDevice
 			deviceIdx := "0"
 			for idx, d := range devices {
-				if d.Name == result.DeviceName {
+				if d.Allocated(result) {
 					device = d
 					deviceIdx = deviceIndex(d, idx)
 					break
@@ -251,7 +251,7 @@ func (c *Collector) podDevices() map[podDeviceKey]*podDevice {
 			}
 
 			for _, podName := range claim.UsedBy {
-				key := podDeviceKey{claim.NodeName, device.Name, result.Namespace, podName}
+				key := podDeviceKey{claim.NodeName, device.Driver, device.Name, result.Namespace, podName}
 				pd, ok := sums[key]
 				if !ok {
 					pd = &podDevice{

@@ -33,6 +33,9 @@ type NodeDevices struct {
 	Nodes  map[string]*NodeDeviceInfo
 	mu     sync.RWMutex
 	Claims *ClaimsCache
+	// update serializes slice and claim events, which arrive from different
+	// informers, so a claim is never counted twice or lost in between.
+	update sync.Mutex
 }
 
 type NodeDeviceInfo struct {
@@ -74,6 +77,7 @@ type DeviceAllocation struct {
 
 type AllocationResult struct {
 	Namespace  string
+	Driver     string
 	DeviceName string
 	Cores      int64
 	Memory     int64
@@ -180,6 +184,8 @@ func (n *NodeDevices) GetDevices(nodeName string) []*NodeDevice {
 // the slice when devices is nil, then rebuilds the node's device list and
 // recomputes usage from the cached claims. A node with no slices left is dropped.
 func (n *NodeDevices) setSliceDevices(nodeName, sliceName string, devices []*NodeDevice) {
+	n.update.Lock()
+	defer n.update.Unlock()
 	claims := n.GetAllClaims()
 
 	n.mu.Lock()
@@ -231,7 +237,7 @@ func (n *NodeDevices) setSliceDevices(nodeName, sliceName string, devices []*Nod
 		}
 		for _, result := range alloc.AllocationResults {
 			for _, device := range info.Devices {
-				if device.Name == result.DeviceName {
+				if device.Allocated(result) {
 					device.CoresUsed += result.Cores
 					device.MemoryUsed += result.Memory
 					break
@@ -262,6 +268,8 @@ func (n *NodeDevices) GetAllClaims() map[string]*DeviceAllocation {
 }
 
 func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
+	n.update.Lock()
+	defer n.update.Unlock()
 	if claim.Status.Allocation == nil {
 		klog.V(5).Infof("ResourceClaim %s/%s has no allocation yet", claim.Namespace, claim.Name)
 		return
@@ -289,16 +297,16 @@ func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 
 				coresPerDevice := consumedCores(result.ConsumedCapacity)
 				memoryPerDevice := result.ConsumedCapacity[constants.DeviceCapacityMemory]
-				klog.V(5).Infof("Increasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
-					result.Device, nodeName, coresPerDevice.Value(), memoryPerDevice.Value())
-				n.increaseNodeUsage(nodeName, result.Device, coresPerDevice.Value(), memoryPerDevice.Value())
-
 				allocationResult := &AllocationResult{
 					Namespace:  claim.Namespace,
+					Driver:     result.Driver,
 					DeviceName: result.Device,
 					Cores:      coresPerDevice.Value(),
 					Memory:     memoryPerDevice.Value(),
 				}
+				klog.V(5).Infof("Increasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
+					result.Device, nodeName, coresPerDevice.Value(), memoryPerDevice.Value())
+				n.increaseNodeUsage(nodeName, allocationResult)
 				allocation.AllocationResults = append(allocation.AllocationResults, allocationResult)
 			} else {
 				klog.Warningf("ResourceClaim %s/%s has no consumed capacity or pool or device", claim.Namespace, claim.Name)
@@ -313,6 +321,8 @@ func (n *NodeDevices) onAddClaim(claim *resourceapi.ResourceClaim) {
 }
 
 func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
+	n.update.Lock()
+	defer n.update.Unlock()
 	claimKey := fmt.Sprintf("%s/%s", claim.Namespace, claim.Name)
 
 	n.Claims.Mux.RLock()
@@ -336,7 +346,9 @@ func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
 					memoryPerDevice := result.ConsumedCapacity[constants.DeviceCapacityMemory]
 					klog.V(5).Infof("Decreasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
 						result.Device, nodeName, coresPerDevice.Value(), memoryPerDevice.Value())
-					n.decreaseNodeUsage(nodeName, result.Device, coresPerDevice.Value(), memoryPerDevice.Value())
+					n.decreaseNodeUsage(nodeName, &AllocationResult{
+						Driver: result.Driver, DeviceName: result.Device, Cores: coresPerDevice.Value(), Memory: memoryPerDevice.Value(),
+					})
 				}
 			}
 		}
@@ -346,7 +358,7 @@ func (n *NodeDevices) onDeleteClaim(claim *resourceapi.ResourceClaim) {
 	for _, result := range allocation.AllocationResults {
 		klog.V(1).Infof("Decreasing node usage for device %s on node %s: CoresUsed=%d, MemoryUsed=%d",
 			result.DeviceName, allocation.NodeName, result.Cores, result.Memory)
-		n.decreaseNodeUsage(allocation.NodeName, result.DeviceName, result.Cores, result.Memory)
+		n.decreaseNodeUsage(allocation.NodeName, result)
 	}
 
 	n.Claims.Mux.Lock()
@@ -359,7 +371,7 @@ func (n *NodeDevices) onUpdateClaim(oldClaim, newClaim *resourceapi.ResourceClai
 	n.onAddClaim(newClaim)
 }
 
-func (n *NodeDevices) increaseNodeUsage(nodeName, deviceName string, coresPerDevice, memoryPerDevice int64) {
+func (n *NodeDevices) increaseNodeUsage(nodeName string, result *AllocationResult) {
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
@@ -373,9 +385,9 @@ func (n *NodeDevices) increaseNodeUsage(nodeName, deviceName string, coresPerDev
 	defer nodeInfo.mu.Unlock()
 
 	for _, device := range nodeInfo.Devices {
-		if device.Name == deviceName {
-			device.CoresUsed += coresPerDevice
-			device.MemoryUsed += memoryPerDevice
+		if device.Allocated(result) {
+			device.CoresUsed += result.Cores
+			device.MemoryUsed += result.Memory
 			klog.V(5).Infof("Updated device %s (%s) on node %s: CoresUsed=%d, MemoryUsed=%d",
 				device.Name, device.UUID, nodeName, device.CoresUsed, device.MemoryUsed)
 			break
@@ -383,7 +395,7 @@ func (n *NodeDevices) increaseNodeUsage(nodeName, deviceName string, coresPerDev
 	}
 }
 
-func (n *NodeDevices) decreaseNodeUsage(nodeName, deviceName string, coresPerDevice, memoryPerDevice int64) {
+func (n *NodeDevices) decreaseNodeUsage(nodeName string, result *AllocationResult) {
 	n.mu.RLock()
 	nodeInfo := n.Nodes[nodeName]
 	n.mu.RUnlock()
@@ -397,9 +409,9 @@ func (n *NodeDevices) decreaseNodeUsage(nodeName, deviceName string, coresPerDev
 	defer nodeInfo.mu.Unlock()
 
 	for _, device := range nodeInfo.Devices {
-		if device.Name == deviceName {
-			device.CoresUsed -= coresPerDevice
-			device.MemoryUsed -= memoryPerDevice
+		if device.Allocated(result) {
+			device.CoresUsed -= result.Cores
+			device.MemoryUsed -= result.Memory
 			if device.CoresUsed < 0 {
 				klog.Warningf("CoresUsed is less than 0 for device %s (%s) on node %s", device.Name, device.UUID, nodeName)
 				device.CoresUsed = 0
@@ -438,6 +450,12 @@ func consumedCores(consumed map[resourceapi.QualifiedName]resource.Quantity) res
 		return q
 	}
 	return consumed[constants.DeviceCapacityComputeUnits]
+}
+
+// Allocated reports whether result was allocated from this device. Device
+// names are only unique per driver, and a node can run several drivers.
+func (d *NodeDevice) Allocated(result *AllocationResult) bool {
+	return d.Name == result.DeviceName && (result.Driver == "" || d.Driver == result.Driver)
 }
 
 // CoreRatio returns cores as a fraction of the whole device.
