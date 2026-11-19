@@ -102,6 +102,10 @@ and exposes them via Prometheus metrics endpoint.`,
 	return cmd
 }
 
+// cacheSyncTimeout bounds the initial cache sync, which otherwise blocks
+// forever when the API is missing or the list is forbidden.
+const cacheSyncTimeout = 2 * time.Minute
+
 // Run runs the monitor server with options. This should never exit.
 func Run(ctx context.Context, opts *options.Options) error {
 	klog.Infof("hami-dra-monitor version: %s", version.Get())
@@ -123,42 +127,10 @@ func Run(ctx context.Context, opts *options.Options) error {
 		return err
 	}
 	cacheInstance := cache.NewCacheWithClient(client.Interface)
-	if err := cacheInstance.Start(); err != nil {
-		klog.Errorf("Failed to start cache: %v", err)
-		return err
-	}
 	defer cacheInstance.Stop()
 
-	// Wait for cache to be ready
-	for !cacheInstance.IsReady() {
-		time.Sleep(100 * time.Millisecond)
-	}
-	klog.Info("Cache is ready")
-
-	// Create a registry that only contains our custom metrics
-	// This prevents exposing Go runtime metrics (go_*, process_*, etc.)
-	customRegistry := prometheus.NewRegistry()
-
-	// Create metrics collector and register to registry
-	collector := metrics.NewCollector(cacheInstance, opts.LegacyMetrics, deviceTypes)
-	klog.Info("Registering metrics collector to registry")
-	customRegistry.MustRegister(collector)
-
-	// Create HTTP server for metrics with registry
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.HandlerFor(customRegistry, promhttp.HandlerOpts{}))
-	metricsServer := &http.Server{
-		Addr:    opts.MetricsBindAddress,
-		Handler: metricsMux,
-	}
-	go func() {
-		klog.Infof("Starting metrics server on %s", opts.MetricsBindAddress)
-		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			klog.Errorf("Metrics server failed: %v", err)
-		}
-	}()
-
-	// Create HTTP server for health probes
+	// Serve the probes while the cache syncs: liveness stays up and readiness
+	// reports the sync, instead of the liveness probe restarting the monitor.
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -187,6 +159,40 @@ func Run(ctx context.Context, opts *options.Options) error {
 		klog.Infof("Starting health probe server on %s", opts.HealthProbeBindAddress)
 		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			klog.Errorf("Health probe server failed: %v", err)
+		}
+	}()
+
+	syncCtx, cancelSync := context.WithTimeoutCause(ctx, cacheSyncTimeout,
+		fmt.Errorf("cache not synced within %s, check that resource.k8s.io/v1 is served and the monitor may list ResourceSlices and ResourceClaims", cacheSyncTimeout))
+	err = cacheInstance.Start(syncCtx)
+	cancelSync()
+	if err != nil {
+		klog.Errorf("Failed to start cache: %v", err)
+		_ = healthServer.Close()
+		return err
+	}
+	klog.Info("Cache is ready")
+
+	// Create a registry that only contains our custom metrics
+	// This prevents exposing Go runtime metrics (go_*, process_*, etc.)
+	customRegistry := prometheus.NewRegistry()
+
+	// Create metrics collector and register to registry
+	collector := metrics.NewCollector(cacheInstance, opts.LegacyMetrics, deviceTypes)
+	klog.Info("Registering metrics collector to registry")
+	customRegistry.MustRegister(collector)
+
+	// Create HTTP server for metrics with registry
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.HandlerFor(customRegistry, promhttp.HandlerOpts{}))
+	metricsServer := &http.Server{
+		Addr:    opts.MetricsBindAddress,
+		Handler: metricsMux,
+	}
+	go func() {
+		klog.Infof("Starting metrics server on %s", opts.MetricsBindAddress)
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			klog.Errorf("Metrics server failed: %v", err)
 		}
 	}()
 
