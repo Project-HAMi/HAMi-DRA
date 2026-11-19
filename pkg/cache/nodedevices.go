@@ -216,7 +216,11 @@ func (n *NodeDevices) setSliceDevices(nodeName, sliceName string, devices []*Nod
 	sort.Strings(names)
 	info.Devices = make([]*NodeDevice, 0)
 	for _, name := range names {
-		info.Devices = append(info.Devices, info.slices[name]...)
+		for _, device := range info.slices[name] {
+			// Devices of the other slices still hold their usage; it is recounted below.
+			device.CoresUsed, device.MemoryUsed = 0, 0
+			info.Devices = append(info.Devices, device)
+		}
 	}
 
 	// Usage is derived from the claims, so claims seen before their slice, or

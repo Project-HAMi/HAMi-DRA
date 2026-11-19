@@ -704,6 +704,24 @@ func TestCache_MultipleSlicesPerNode(t *testing.T) {
 	}
 }
 
+func TestCache_OtherSliceUpdateKeepsUsage(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")
+	b := createTestResourceSlice("slice-b", "node-1", "gpu-1", "uuid-1")
+	c.onAddSlice(a)
+	c.onAddSlice(b)
+	c.NodeDevices.onAddClaim(createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024))
+
+	// An update of slice-b, such as an informer resync, must not count claim-1 again.
+	c.onUpdateSlice(b, b)
+	c.onUpdateSlice(b, b)
+	for _, d := range c.NodeDevices.GetDevices("node-1") {
+		if d.Name == "gpu-0" && (d.CoresUsed != 30 || d.MemoryUsed != 1024) {
+			t.Fatalf("gpu-0 usage = %d cores %d memory, want 30 and 1024", d.CoresUsed, d.MemoryUsed)
+		}
+	}
+}
+
 func TestCache_ClaimBeforeSliceIsCounted(t *testing.T) {
 	c := NewCacheWithClient(fake.NewSimpleClientset())
 
