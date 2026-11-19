@@ -963,3 +963,60 @@ func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
 	cus = claim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
 	assert.Equal(t, int64(25), cus.Value())
 }
+
+// A pod rejected after this webhook leaves its claim behind; admitting the
+// pod again must reuse it rather than fail on the name.
+func TestHandleReusesLeftoverClaim(t *testing.T) {
+	for _, template := range []bool{false, true} {
+		sch := runtime.NewScheme()
+		require.NoError(t, scheme.AddToScheme(sch))
+		fakeClient := fake.NewClientBuilder().WithScheme(sch).WithStatusSubresource(&resourceapi.ResourceClaim{}).Build()
+		a := &MutatingAdmission{
+			Decoder:               admission.NewDecoder(sch),
+			Client:                fakeClient,
+			DeviceConfig:          defaultNvidiaDeviceConfig(),
+			ResourceClaimTemplate: template,
+		}
+		req := newGPUPodCreateRequest(t, nil)
+
+		require.True(t, a.Handle(context.Background(), req).Allowed)
+		resp := a.Handle(context.Background(), req)
+		require.True(t, resp.Allowed, "template=%v: leftover not reused: %v", template, resp.Result)
+		assert.Len(t, patchedPodResourceClaims(t, resp), 1)
+	}
+}
+
+func TestHandleDoesNotReuseClaimInUseOrDifferent(t *testing.T) {
+	key := client.ObjectKey{Namespace: "default", Name: "default-trainer-worker-nvidia"}
+	for _, tc := range []struct {
+		name   string
+		change func(*resourceapi.ResourceClaim)
+	}{
+		{"reserved by a running pod", func(c *resourceapi.ResourceClaim) {
+			c.Status.ReservedFor = []resourceapi.ResourceClaimConsumerReference{{Resource: "pods", Name: "trainer", UID: "uid-1"}}
+		}},
+		{"asks for other devices", func(c *resourceapi.ResourceClaim) { c.Spec.Devices.Requests[0].Exactly.Count = 2 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sch := runtime.NewScheme()
+			require.NoError(t, scheme.AddToScheme(sch))
+			fakeClient := fake.NewClientBuilder().WithScheme(sch).WithStatusSubresource(&resourceapi.ResourceClaim{}).Build()
+			a := &MutatingAdmission{Decoder: admission.NewDecoder(sch), Client: fakeClient, DeviceConfig: defaultNvidiaDeviceConfig()}
+			req := newGPUPodCreateRequest(t, nil)
+			require.True(t, a.Handle(context.Background(), req).Allowed)
+
+			existing := &resourceapi.ResourceClaim{}
+			require.NoError(t, fakeClient.Get(context.Background(), key, existing))
+			tc.change(existing)
+			require.NoError(t, fakeClient.Status().Update(context.Background(), existing.DeepCopy()))
+			require.NoError(t, fakeClient.Get(context.Background(), key, existing))
+			tc.change(existing)
+			require.NoError(t, fakeClient.Update(context.Background(), existing))
+
+			resp := a.Handle(context.Background(), req)
+			require.False(t, resp.Allowed)
+			assert.Contains(t, resp.Result.Message, "delete it to admit the pod")
+			require.NoError(t, fakeClient.Get(context.Background(), key, &resourceapi.ResourceClaim{}), "the existing claim must be left alone")
+		})
+	}
+}
