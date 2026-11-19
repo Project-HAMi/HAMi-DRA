@@ -240,6 +240,32 @@ func TestCollect_LegacyDisabled(t *testing.T) {
 	}
 }
 
+// The legacy pod metric is on a 0-100 scale like the node metric, also for
+// devices whose cores are an absolute count (AMD CUs here).
+func TestCollect_LegacyPodCoresArePercent(t *testing.T) {
+	c := cache.NewCacheWithClient(fake.NewSimpleClientset())
+	c.NodeDevices.Nodes["node1"] = &cache.NodeDeviceInfo{Devices: []*cache.NodeDevice{{
+		Name: "gpu0", UUID: "uuid-1", CoresTotal: 32, CoresUsed: 16, CoreScale: 32,
+	}}}
+	c.NodeDevices.Claims.Claims["default/claim1"] = &cache.DeviceAllocation{
+		NodeName:          "node1",
+		UsedBy:            []string{"pod1"},
+		AllocationResults: []*cache.AllocationResult{{Namespace: "default", DeviceName: "gpu0", Cores: 16}},
+	}
+	col := NewCollector(c, true, (&config.Config{}).DeviceTypes())
+	want := `
+# HELP GPUDeviceCoreAllocated Device core allocated for a certain GPU
+# TYPE GPUDeviceCoreAllocated gauge
+GPUDeviceCoreAllocated{devicebrand="",deviceidx="0",devicename="gpu0",deviceproductname="",deviceuuid="uuid-1",nodeid="node1"} 50
+# HELP vGPUDeviceCoreAllocated vGPU Device core allocated for a container
+# TYPE vGPUDeviceCoreAllocated gauge
+vGPUDeviceCoreAllocated{devicebrand="",deviceidx="0",devicename="gpu0",deviceproductname="",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 50
+`
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), "GPUDeviceCoreAllocated", "vGPUDeviceCoreAllocated"); err != nil {
+		t.Errorf("legacy core metrics mismatch: %v", err)
+	}
+}
+
 func TestCollect_LegacyEnabled(t *testing.T) {
 	want := `
 # HELP GPUDeviceMemoryLimit Device memory limit for a certain GPU

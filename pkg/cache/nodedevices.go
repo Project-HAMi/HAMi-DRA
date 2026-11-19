@@ -59,8 +59,9 @@ type NodeDevice struct {
 	ProductName  string
 	CoresTotal   int64
 	CoresUsed    int64
-	// CoreScale is the core amount that makes up the whole device: 100 for a
-	// percent-based "cores" capacity, the CU count for "computeUnits" (AMD).
+	// CoreScale is the core amount that makes up the whole device, i.e. its
+	// capacity: 100 for NVIDIA's percent-based "cores", the core count for
+	// Hygon and Ascend, the CU count for "computeUnits" (AMD).
 	CoreScale   int64
 	MemoryTotal int64
 	MemoryUsed  int64
@@ -93,11 +94,9 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 	nodeDevices := []*NodeDevice{}
 	for _, device := range slice.Spec.Devices {
 		coresTotal := device.Capacity[constants.DeviceCapacityCores].Value
-		coreScale := int64(100)
 		if _, ok := device.Capacity[constants.DeviceCapacityCores]; !ok {
 			if cu, ok := device.Capacity[constants.DeviceCapacityComputeUnits]; ok {
 				coresTotal = cu.Value
-				coreScale = cu.Value.Value()
 			}
 		}
 		memoryTotal := device.Capacity[constants.DeviceCapacityMemory].Value
@@ -143,7 +142,7 @@ func (n *NodeDevices) ParseNodeDevice(slice *resourceapi.ResourceSlice) []*NodeD
 			ProductName:  productName,
 			CoresTotal:   coresTotal.Value(),
 			CoresUsed:    0,
-			CoreScale:    coreScale,
+			CoreScale:    coresTotal.Value(),
 			MemoryTotal:  memoryTotal.Value(),
 			MemoryUsed:   0,
 		})
