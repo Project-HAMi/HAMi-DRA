@@ -26,6 +26,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
@@ -40,8 +42,11 @@ import (
 
 // MutatingAdmission mutates API request if necessary.
 type MutatingAdmission struct {
-	Decoder       admission.Decoder
-	Client        client.Client
+	Decoder admission.Decoder
+	Client  client.Client
+	// Reader reads a same-named template directly from the API server to check
+	// whether it can be reused, without a cluster-wide informer.
+	Reader        client.Reader
 	DeviceConfig  *config.DRADeviceConfig
 	DeviceConfigs []*config.DRADeviceConfig
 }
@@ -147,7 +152,7 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	}
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name)
+		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job))
 		rctNames = append(rctNames, names...)
 		if err != nil {
 			return rctNames, err
@@ -156,7 +161,39 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	return rctNames, nil
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name string) ([]string, error) {
+// createTemplate creates want. A job rejected after this webhook (for example
+// by Volcano's own validation) leaves its templates behind under the names it
+// gets again when resubmitted; a leftover created for the same job and asking
+// for the same devices is reused instead of failing on the name.
+func (a *MutatingAdmission) createTemplate(ctx context.Context, want *resourceapi.ResourceClaimTemplate, owner string) error {
+	err := a.Client.Create(ctx, want)
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	reader := a.Reader
+	if reader == nil {
+		reader = a.Client
+	}
+	existing := &resourceapi.ResourceClaimTemplate{}
+	if getErr := reader.Get(ctx, client.ObjectKeyFromObject(want), existing); getErr == nil && existing.DeletionTimestamp == nil &&
+		existing.Labels[constants.DraLabel] != "" && existing.Annotations[constants.DraOwnerAnnotation] == owner &&
+		equality.Semantic.DeepEqual(existing.Spec.Spec, want.Spec.Spec) {
+		klog.V(4).Infof("Reusing ResourceClaimTemplate %s left by an earlier admission", client.ObjectKeyFromObject(want))
+		return nil
+	}
+	return fmt.Errorf("%w; it belongs to another job or asks for other devices, delete it to admit the job", err)
+}
+
+// jobOwner identifies the job a template is created for. A job created with
+// generateName has no name yet at admission, so its prefix stands in.
+func jobOwner(job *vcv1alpha1.Job) string {
+	if job.Name != "" {
+		return job.Name
+	}
+	return job.GenerateName
+}
+
+func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string) ([]string, error) {
 	var rctNames []string
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
@@ -170,7 +207,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 			raw = fmt.Sprintf("%s-%s", raw, cfg.ClaimNameSuffix())
 		}
 		rctName := truncateDNS1123Label(raw)
-		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, cfg)
+		resourceclaimtemplate := a.buildResourceClaimTemplate(rctName, namespace, owner, cfg)
 
 		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
@@ -193,7 +230,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
 		}
 
-		if err := a.Client.Create(ctx, resourceclaimtemplate); err != nil {
+		if err := a.createTemplate(ctx, resourceclaimtemplate, owner); err != nil {
 			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
 		}
 
@@ -221,7 +258,7 @@ func truncateDNS1123Label(name string) string {
 	return prefix + suffix
 }
 
-func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {
+func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace, owner string, cfg *config.DRADeviceConfig) *resourceapi.ResourceClaimTemplate {
 	if cfg == nil {
 		cfg = a.DeviceConfig
 	}
@@ -229,6 +266,9 @@ func (a *MutatingAdmission) buildResourceClaimTemplate(name, namespace string, c
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			// Job deletion removes only templates this webhook created for that job.
+			Labels:      map[string]string{constants.DraLabel: "true"},
+			Annotations: map[string]string{constants.DraOwnerAnnotation: owner},
 		},
 		Spec: resourceapi.ResourceClaimTemplateSpec{
 			Spec: resourceapi.ResourceClaimSpec{
