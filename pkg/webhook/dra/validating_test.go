@@ -86,10 +86,18 @@ func TestValidatingHandle_DeletesResourceClaims(t *testing.T) {
 	require.NoError(t, scheme.AddToScheme(sch))
 
 	claimOne := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "default-multi-gpu-one", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-multi-gpu-one",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
 	}
 	claimTwo := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "default-multi-gpu-two", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-multi-gpu-two",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(claimOne, claimTwo).Build()
 
@@ -223,7 +231,11 @@ func TestValidatingHandle_DryRunKeepsClaims(t *testing.T) {
 	sch := runtime.NewScheme()
 	require.NoError(t, scheme.AddToScheme(sch))
 	existing := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "default-p-gpu", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-p-gpu",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
 	pod := &corev1.Pod{
@@ -274,7 +286,13 @@ func TestValidatingHandle_DryRunKeepsTemplates(t *testing.T) {
 func TestValidatingHandle_KeepsUserManagedResourceClaims(t *testing.T) {
 	sch := runtime.NewScheme()
 	require.NoError(t, scheme.AddToScheme(sch))
-	own := &resourceapi.ResourceClaim{ObjectMeta: metav1.ObjectMeta{Name: "default-p-main", Namespace: "default"}}
+	own := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-p-main",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+	}
 	shared := &resourceapi.ResourceClaim{ObjectMeta: metav1.ObjectMeta{Name: "team-shared-gpu", Namespace: "default"}}
 	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(own, shared).Build()
 
@@ -293,4 +311,98 @@ func TestValidatingHandle_KeepsUserManagedResourceClaims(t *testing.T) {
 	assert.True(t, apierrors.IsNotFound(err), "webhook-generated claim should be deleted")
 	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "team-shared-gpu"}, &resourceapi.ResourceClaim{})
 	assert.NoError(t, err, "user-managed claim must survive pod deletion")
+}
+
+func TestValidatingHandle_DeletesControllerGeneratedResourceClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+
+	// Controller pod using generateName: at admission pod.Name was "", so claim got random name "default-a1b2c-cuda-container"
+	claim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-a1b2c-cuda-container",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+	}
+	userClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-shared-gpu",
+			Namespace: "default",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(claim, userClaim).Build()
+
+	// Pod has controller-generated name "gpu-test-7f89b-xxxx" upon deletion
+	claimName := claim.Name
+	userClaimName := userClaim.Name
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gpu-test-7f89b-xxxx",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+		Spec: corev1.PodSpec{
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "cuda-container", ResourceClaimName: &claimName},
+				{Name: "shared", ResourceClaimName: &userClaimName},
+			},
+		},
+	}
+
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
+	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed)
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: claimName}, &resourceapi.ResourceClaim{})
+	assert.True(t, apierrors.IsNotFound(err), "controller-generated claim with DRA label should be deleted")
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: userClaimName}, &resourceapi.ResourceClaim{})
+	assert.NoError(t, err, "user-managed claim without DRA label must not be deleted")
+}
+
+func TestValidatingHandle_DeletesPreUpgradeResourceClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+
+	// Pre-upgrade webhook claim: lacks constants.DraLabel, but has legacy namespace-pod- name prefix
+	preUpgradeClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-legacy-pod-main",
+			Namespace: "default",
+		},
+	}
+	userClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "shared-team-gpu",
+			Namespace: "default",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(preUpgradeClaim, userClaim).Build()
+
+	claimName := preUpgradeClaim.Name
+	userClaimName := userClaim.Name
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy-pod",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+		Spec: corev1.PodSpec{
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "main", ResourceClaimName: &claimName},
+				{Name: "shared", ResourceClaimName: &userClaimName},
+			},
+		},
+	}
+
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
+	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed)
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: claimName}, &resourceapi.ResourceClaim{})
+	assert.True(t, apierrors.IsNotFound(err), "pre-upgrade webhook claim without DRA label should be deleted via legacy prefix match")
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: userClaimName}, &resourceapi.ResourceClaim{})
+	assert.NoError(t, err, "user-managed claim without DRA label must not be deleted")
 }
