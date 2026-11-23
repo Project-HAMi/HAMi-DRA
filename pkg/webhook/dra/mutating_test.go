@@ -911,6 +911,29 @@ func TestHandleContainerAMDMemoryPercentage(t *testing.T) {
 	}
 }
 
+// While a driver republishes a pool, a GPU still listed only in an older
+// generation keeps its own memory size among the percentage alternatives.
+func TestDeviceMemorySizesKeepsOlderGenerations(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	slice := func(name string, generation, mem int64) *resourceapi.ResourceSlice {
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "node", Generation: generation, ResourceSliceCount: 2},
+			Devices: []resourceapi.Device{{
+				Name:       name,
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+				Capacity:   map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"memory": {Value: *resource.NewQuantity(mem, resource.BinarySI)}},
+			}},
+		}}
+	}
+	a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slice("gpu-a", 1, 32<<30), slice("gpu-b", 2, 64<<30)).Build()}
+	sizes, err := a.deviceMemorySizes(context.Background(), cfgs[0])
+	require.NoError(t, err)
+	assert.Equal(t, []int64{32 << 30, 64 << 30}, sizes)
+}
+
 func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
 	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
 	require.NoError(t, err)

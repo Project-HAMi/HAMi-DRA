@@ -508,7 +508,7 @@ func (a *MutatingAdmission) withReferenceComputeUnits(ctx context.Context, cfg *
 func (a *MutatingAdmission) deviceCapacities(ctx context.Context, cfg *config.DRADeviceConfig, capName, what string) ([]int64, error) {
 	seen := map[int64]bool{}
 	var sizes []int64
-	err := a.eachDevice(ctx, cfg, what, func(d resourceapi.Device) {
+	err := a.eachDevice(ctx, cfg, what, false, func(d resourceapi.Device) {
 		if c, ok := d.Capacity[resourceapi.QualifiedName(capName)]; ok && !seen[c.Value.Value()] {
 			seen[c.Value.Value()] = true
 			sizes = append(sizes, c.Value.Value())
@@ -547,7 +547,7 @@ func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config
 
 	name := resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())
 	var minimum *resource.Quantity
-	err := a.eachDevice(ctx, cfg, "compute sharing", func(d resourceapi.Device) {
+	err := a.eachDevice(ctx, cfg, "compute sharing", true, func(d resourceapi.Device) {
 		if c, ok := d.Capacity[name]; ok && c.RequestPolicy != nil && c.RequestPolicy.ValidRange != nil &&
 			c.RequestPolicy.ValidRange.Min != nil && c.RequestPolicy.ValidRange.Min.Sign() > 0 && selectable(d) {
 			minimum = c.RequestPolicy.ValidRange.Min
@@ -564,9 +564,11 @@ func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config
 
 // eachDevice calls fn for every device of cfg's driver and type in the
 // published ResourceSlices; what names the request they serve, for the error.
-// Slices of a pool older than its newest generation are skipped, as the
-// scheduler does while a driver replaces them.
-func (a *MutatingAdmission) eachDevice(ctx context.Context, cfg *config.DRADeviceConfig, what string, fn func(resourceapi.Device)) error {
+// With newestOnly, slices of a pool older than its newest generation are
+// skipped, as the scheduler does while a driver replaces them. Sizing keeps
+// them: until every slice of a pool is republished, the old ones still hold
+// devices the new generation does not show yet.
+func (a *MutatingAdmission) eachDevice(ctx context.Context, cfg *config.DRADeviceConfig, what string, newestOnly bool, fn func(resourceapi.Device)) error {
 	// The cached List waits for the informer to sync; bound it like
 	// ExtendedResourceWarnings does so admission can't hang on it.
 	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -582,7 +584,7 @@ func (a *MutatingAdmission) eachDevice(ctx context.Context, cfg *config.DRADevic
 		}
 	}
 	for _, rs := range list.Items {
-		if rs.Spec.Driver != cfg.EffectiveDraDriverName() || rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name] {
+		if rs.Spec.Driver != cfg.EffectiveDraDriverName() || (newestOnly && rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name]) {
 			continue
 		}
 		for _, d := range rs.Spec.Devices {
