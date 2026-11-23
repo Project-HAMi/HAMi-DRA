@@ -194,7 +194,7 @@ func TestHandleTaskProcessesAllContainers(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "multi", Namespace: "default"}}
 
-	rctNames, err := admission.handleTask(context.Background(), task, job)
+	rctNames, _, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"default-multi-multi-gpu-task-gpu-one", "default-multi-multi-gpu-task-gpu-two"}, rctNames)
 
@@ -224,7 +224,7 @@ func TestHandleTaskRecordsGenerateNameAsOwner(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{GenerateName: "train-", Namespace: "default"}}
 
-	names, err := admission.handleTask(context.Background(), task, job)
+	names, _, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
 	require.Len(t, names, 1)
 	rct := &resourceapi.ResourceClaimTemplate{}
@@ -336,7 +336,7 @@ func TestHandleTaskSameTaskNameInTwoJobs(t *testing.T) {
 	var got []string
 	for _, jobName := range []string{"job-a", "job-b"} {
 		job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "default"}}
-		names, err := admission.handleTask(context.Background(), newTask(), job)
+		names, _, err := admission.handleTask(context.Background(), newTask(), job)
 		require.NoError(t, err)
 		got = append(got, names...)
 	}
@@ -401,7 +401,7 @@ func TestHandleTaskUsesConfiguredCoreCapacityName(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
 
-	names, err := admission.handleTask(context.Background(), task, job)
+	names, _, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
 	require.Len(t, names, 1)
 
@@ -433,15 +433,57 @@ func TestHandleTaskReusesLeftoverTemplate(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
 
-	names, err := admission.handleTask(context.Background(), newTask(), job)
+	names, _, err := admission.handleTask(context.Background(), newTask(), job)
 	require.NoError(t, err)
-	_, err = admission.handleTask(context.Background(), newTask(), job)
+	_, _, err = admission.handleTask(context.Background(), newTask(), job)
 	require.NoError(t, err, "the job's own leftover template must be reused")
 
 	rct := &resourceapi.ResourceClaimTemplate{}
 	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, rct))
 	rct.Annotations[constants.DraOwnerAnnotation] = "someone-else"
 	require.NoError(t, fakeClient.Update(context.Background(), rct))
-	_, err = admission.handleTask(context.Background(), newTask(), job)
+	_, _, err = admission.handleTask(context.Background(), newTask(), job)
 	require.ErrorContains(t, err, "delete it to admit the job")
+}
+
+// A failed request rolls back only the templates it created, not one it reused
+// from a job that already exists.
+func TestHandleRollbackKeepsReusedTemplate(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	conflicting := &resourceapi.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "default-j-t2-c", Namespace: "default"}}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(conflicting).Build()
+	mutating := &MutatingAdmission{
+		Decoder:      admission.NewDecoder(sch),
+		Client:       fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{ResourceCountName: "nvidia.com/gpu", RequestName: "gpu"},
+	}
+	newTask := func(name string) vcv1alpha1.TaskSpec {
+		return vcv1alpha1.TaskSpec{
+			Name: name,
+			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name:      "c",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")}},
+			}}}},
+		}
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+	// The existing job "j" already uses this template.
+	task := newTask("t1")
+	_, _, err := mutating.handleTask(context.Background(), &task, job)
+	require.NoError(t, err)
+
+	job.Spec.Tasks = []vcv1alpha1.TaskSpec{newTask("t1"), newTask("t2")}
+	raw, err := json.Marshal(job)
+	require.NoError(t, err)
+	resp := mutating.Handle(context.Background(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Namespace: "default",
+		Operation: admissionv1.Create,
+		Object:    runtime.RawExtension{Raw: raw},
+	}})
+	require.False(t, resp.Allowed)
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "default-j-t1-c"}, &resourceapi.ResourceClaimTemplate{})
+	assert.NoError(t, err, "a reused template must survive the rollback")
 }

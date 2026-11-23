@@ -78,18 +78,20 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 		klog.Warningf("Job(%s/%s): %s", req.Namespace, job.Name, w)
 	}
 	needPatch := false
-	rctNameList := []string{}
+	// Only templates this request created are rolled back; reused ones may
+	// belong to a job that already exists.
+	var createdList []string
 
 	for i := range job.Spec.Tasks {
 		task := &job.Spec.Tasks[i]
-		rctNames, err := a.handleTask(ctx, task, job)
+		rctNames, created, err := a.handleTask(ctx, task, job)
+		createdList = append(createdList, created...)
 		if err != nil {
-			a.deleteResourceClaimTemplates(ctx, job.Namespace, append(rctNameList, rctNames...))
+			a.deleteResourceClaimTemplates(ctx, job.Namespace, createdList)
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		for _, rctName := range rctNames {
 			needPatch = true
-			rctNameList = append(rctNameList, rctName)
 			task.Template.Spec.ResourceClaims = append(task.Template.Spec.ResourceClaims, corev1.PodResourceClaim{
 				Name:                      rctName,
 				ResourceClaimTemplateName: &rctName,
@@ -110,7 +112,7 @@ func (a *MutatingAdmission) Handle(ctx context.Context, req admission.Request) a
 
 	marshaledBytes, err := json.Marshal(job)
 	if err != nil {
-		a.deleteResourceClaimTemplates(ctx, job.Namespace, rctNameList)
+		a.deleteResourceClaimTemplates(ctx, job.Namespace, createdList)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledBytes).WithWarnings(warnings...)
@@ -131,8 +133,6 @@ func (a *MutatingAdmission) deleteResourceClaimTemplates(ctx context.Context, na
 	}
 }
 
-// handleTask processes every container in the task and returns the names of
-// the ResourceClaimTemplates created for them.
 func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 	if len(a.DeviceConfigs) > 0 {
 		return a.DeviceConfigs
@@ -143,8 +143,9 @@ func (a *MutatingAdmission) configs() []*config.DRADeviceConfig {
 	return nil
 }
 
-func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) ([]string, error) {
-	var rctNames []string
+// handleTask processes every container in the task and returns the names of
+// the ResourceClaimTemplates they use and of those it created.
+func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.TaskSpec, job *vcv1alpha1.Job) (rctNames, created []string, err error) {
 	// Task names repeat across jobs, so the template name must include the job.
 	jobName := job.Name
 	if jobName == "" {
@@ -152,23 +153,24 @@ func (a *MutatingAdmission) handleTask(ctx context.Context, task *vcv1alpha1.Tas
 	}
 	for i := range task.Template.Spec.Containers {
 		container := &task.Template.Spec.Containers[i]
-		names, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job))
+		names, newNames, err := a.handleContainerTemplate(ctx, container, job.Namespace, jobName+"-"+task.Name, jobOwner(job))
 		rctNames = append(rctNames, names...)
+		created = append(created, newNames...)
 		if err != nil {
-			return rctNames, err
+			return rctNames, created, err
 		}
 	}
-	return rctNames, nil
+	return rctNames, created, nil
 }
 
-// createTemplate creates want. A job rejected after this webhook (for example
-// by Volcano's own validation) leaves its templates behind under the names it
-// gets again when resubmitted; a leftover created for the same job and asking
-// for the same devices is reused instead of failing on the name.
-func (a *MutatingAdmission) createTemplate(ctx context.Context, want *resourceapi.ResourceClaimTemplate, owner string) error {
+// createTemplate creates want and reports whether it did. A job rejected after
+// this webhook (for example by Volcano's own validation) leaves its templates
+// behind under the names it gets again when resubmitted; a leftover created for
+// the same job and asking for the same devices is reused instead of failing on the name.
+func (a *MutatingAdmission) createTemplate(ctx context.Context, want *resourceapi.ResourceClaimTemplate, owner string) (bool, error) {
 	err := a.Client.Create(ctx, want)
 	if !apierrors.IsAlreadyExists(err) {
-		return err
+		return err == nil, err
 	}
 	reader := a.Reader
 	if reader == nil {
@@ -179,9 +181,9 @@ func (a *MutatingAdmission) createTemplate(ctx context.Context, want *resourceap
 		existing.Labels[constants.DraLabel] != "" && existing.Annotations[constants.DraOwnerAnnotation] == owner &&
 		equality.Semantic.DeepEqual(existing.Spec.Spec, want.Spec.Spec) {
 		klog.V(4).Infof("Reusing ResourceClaimTemplate %s left by an earlier admission", client.ObjectKeyFromObject(want))
-		return nil
+		return false, nil
 	}
-	return fmt.Errorf("%w; it belongs to another job or asks for other devices, delete it to admit the job", err)
+	return false, fmt.Errorf("%w; it belongs to another job or asks for other devices, delete it to admit the job", err)
 }
 
 // jobOwner identifies the job a template is created for. A job created with
@@ -193,8 +195,7 @@ func jobOwner(job *vcv1alpha1.Job) string {
 	return job.GenerateName
 }
 
-func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string) ([]string, error) {
-	var rctNames []string
+func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string) (rctNames, created []string, err error) {
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
@@ -216,7 +217,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
 			converted, err := cfg.ConvertCores(coreQty)
 			if err != nil {
-				return rctNames, err
+				return rctNames, created, err
 			}
 			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests[resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())] = converted
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceCoreName))
@@ -224,14 +225,18 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		if memQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceMemoryName)]; ok {
 			memory, err := cfg.ConvertMemory(memQty)
 			if err != nil {
-				return rctNames, err
+				return rctNames, created, err
 			}
 			resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["memory"] = memory
 			a.removeResource(container, corev1.ResourceName(cfg.ResourceMemoryName))
 		}
 
-		if err := a.createTemplate(ctx, resourceclaimtemplate, owner); err != nil {
-			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
+		isNew, err := a.createTemplate(ctx, resourceclaimtemplate, owner)
+		if err != nil {
+			return rctNames, created, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)
+		}
+		if isNew {
+			created = append(created, rctName)
 		}
 
 		container.Resources.Claims = append(container.Resources.Claims, corev1.ResourceClaim{Name: rctName})
@@ -239,7 +244,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		klog.V(4).Infof("Successfully created ResourceClaimTemplate %s/%s", namespace, rctName)
 		rctNames = append(rctNames, rctName)
 	}
-	return rctNames, nil
+	return rctNames, created, nil
 }
 
 const dns1123LabelMaxLength = 63
