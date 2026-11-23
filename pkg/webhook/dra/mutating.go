@@ -163,11 +163,14 @@ func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfi
 }
 
 // newClaimObject wraps spec in a ResourceClaim, or in a ResourceClaimTemplate when asTemplate is set.
-// Templates carry the DRA label so that Pod deletion only removes templates this webhook created.
+// Both carry the DRA label so that Pod deletion only removes claims and templates this webhook created.
 func newClaimObject(name, namespace string, spec resourceapi.ResourceClaimSpec, asTemplate bool) client.Object {
-	meta := metav1.ObjectMeta{Name: name, Namespace: namespace}
+	meta := metav1.ObjectMeta{
+		Name:      name,
+		Namespace: namespace,
+		Labels:    map[string]string{constants.DraLabel: "true"},
+	}
 	if asTemplate {
-		meta.Labels = map[string]string{constants.DraLabel: "true"}
 		return &resourceapi.ResourceClaimTemplate{
 			ObjectMeta: meta,
 			Spec:       resourceapi.ResourceClaimTemplateSpec{Spec: spec},
@@ -323,6 +326,7 @@ func (a *MutatingAdmission) buildResourceClaim(name, namespace string, cfg *conf
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Labels:    map[string]string{constants.DraLabel: "true"},
 		},
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{
