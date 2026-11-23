@@ -486,6 +486,7 @@ func TestHandleResourceClaimTemplate(t *testing.T) {
 				assert.Nil(t, podClaims[0].ResourceClaimTemplateName)
 
 				require.NoError(t, fakeClient.Get(context.Background(), key, claim))
+				assert.Equal(t, "true", claim.Labels[constants.DraLabel])
 				assert.True(t, apierrors.IsNotFound(fakeClient.Get(context.Background(), key, template)))
 			}
 		})

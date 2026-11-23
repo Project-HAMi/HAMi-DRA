@@ -70,7 +70,7 @@ func TestValidatingHandle_SkipsPodsWithoutDraLabel(t *testing.T) {
 		},
 	}
 
-	v := &ValidatingAdmission{Client: fakeClient}
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
 	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
 
 	assert.True(t, resp.Allowed, "pods without the DRA label should always be allowed")
@@ -107,7 +107,7 @@ func TestValidatingHandle_DeletesResourceClaims(t *testing.T) {
 		},
 	}
 
-	v := &ValidatingAdmission{Client: fakeClient}
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
 	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
 
 	require.True(t, resp.Allowed, "pod deletion should always be allowed")
@@ -134,7 +134,7 @@ func TestValidatingHandle_MissingResourceClaimIsIgnored(t *testing.T) {
 		},
 	}
 
-	v := &ValidatingAdmission{Client: fakeClient}
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
 	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
 
 	assert.True(t, resp.Allowed, "a ResourceClaim that is already gone should not block pod deletion")
@@ -234,7 +234,7 @@ func TestValidatingHandle_DryRunKeepsClaims(t *testing.T) {
 	dryRun := true
 	req.DryRun = &dryRun
 
-	resp := (&ValidatingAdmission{Client: fakeClient}).Handle(context.Background(), req)
+	resp := (&ValidatingAdmission{Client: fakeClient, Reader: fakeClient}).Handle(context.Background(), req)
 	assert.True(t, resp.Allowed)
 	assert.NoError(t, fakeClient.Get(context.Background(),
 		client.ObjectKey{Namespace: "default", Name: "default-p-gpu"}, &resourceapi.ResourceClaim{}))
@@ -286,11 +286,105 @@ func TestValidatingHandle_KeepsUserManagedResourceClaims(t *testing.T) {
 		}},
 	}
 
-	resp := (&ValidatingAdmission{Client: fakeClient}).Handle(context.Background(), newDeleteRequest(t, pod))
+	resp := (&ValidatingAdmission{Client: fakeClient, Reader: fakeClient}).Handle(context.Background(), newDeleteRequest(t, pod))
 	require.True(t, resp.Allowed)
 
 	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "default-p-main"}, &resourceapi.ResourceClaim{})
 	assert.True(t, apierrors.IsNotFound(err), "webhook-generated claim should be deleted")
 	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "team-shared-gpu"}, &resourceapi.ResourceClaim{})
 	assert.NoError(t, err, "user-managed claim must survive pod deletion")
+}
+
+func TestValidatingHandle_DeletesControllerGeneratedResourceClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+
+	// Controller pod using generateName: at admission pod.Name was "", so claim got random name "default-a1b2c-cuda-container"
+	claim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-a1b2c-cuda-container",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+	}
+	userClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-shared-gpu",
+			Namespace: "default",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(claim, userClaim).Build()
+
+	// Pod has controller-generated name "gpu-test-7f89b-xxxx" upon deletion
+	claimName := claim.Name
+	userClaimName := userClaim.Name
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gpu-test-7f89b-xxxx",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+		Spec: corev1.PodSpec{
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "cuda-container", ResourceClaimName: &claimName},
+				{Name: "shared", ResourceClaimName: &userClaimName},
+			},
+		},
+	}
+
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
+	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed)
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: claimName}, &resourceapi.ResourceClaim{})
+	assert.True(t, apierrors.IsNotFound(err), "controller-generated claim with DRA label should be deleted")
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: userClaimName}, &resourceapi.ResourceClaim{})
+	assert.NoError(t, err, "user-managed claim without DRA label must not be deleted")
+}
+
+func TestValidatingHandle_DeletesPreUpgradeResourceClaims(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+
+	// Pre-upgrade webhook claim: lacks constants.DraLabel, but has legacy namespace-pod- name prefix
+	preUpgradeClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-legacy-pod-main",
+			Namespace: "default",
+		},
+	}
+	userClaim := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "shared-team-gpu",
+			Namespace: "default",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(preUpgradeClaim, userClaim).Build()
+
+	claimName := preUpgradeClaim.Name
+	userClaimName := userClaim.Name
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy-pod",
+			Namespace: "default",
+			Labels:    map[string]string{constants.DraLabel: "true"},
+		},
+		Spec: corev1.PodSpec{
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "main", ResourceClaimName: &claimName},
+				{Name: "shared", ResourceClaimName: &userClaimName},
+			},
+		},
+	}
+
+	v := &ValidatingAdmission{Client: fakeClient, Reader: fakeClient}
+	resp := v.Handle(context.Background(), newDeleteRequest(t, pod))
+	require.True(t, resp.Allowed)
+
+	err := fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: claimName}, &resourceapi.ResourceClaim{})
+	assert.True(t, apierrors.IsNotFound(err), "pre-upgrade webhook claim without DRA label should be deleted via legacy prefix match")
+
+	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: userClaimName}, &resourceapi.ResourceClaim{})
+	assert.NoError(t, err, "user-managed claim without DRA label must not be deleted")
 }
