@@ -78,6 +78,7 @@ func newValidating(t *testing.T, objs ...client.Object) (*ValidatingAdmission, c
 	t.Helper()
 	sch := runtime.NewScheme()
 	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
 	c := fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build()
 	return &ValidatingAdmission{Client: c, Reader: c}, c
 }
@@ -138,4 +139,25 @@ func TestValidatingHandleDeletesTemplatesOfGeneratedJobName(t *testing.T) {
 	require.True(t, v.Handle(context.Background(), req).Allowed)
 	assert.False(t, templateExists(t, c, "default-x7k2p-worker-main"))
 	assert.True(t, templateExists(t, c, "default-other-worker-main"))
+}
+
+// Jobs of the same generateName prefix share the recorded owner, so a job
+// referencing another's template must not delete it.
+func TestValidatingHandleKeepsTemplateOfSamePrefixJob(t *testing.T) {
+	owner := &vcv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "train-aaaaa", GenerateName: "train-", Namespace: "default"},
+		Spec: vcv1alpha1.JobSpec{Tasks: []vcv1alpha1.TaskSpec{{
+			Name: "worker",
+			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "default-x7k2p-worker-main", ResourceClaimTemplateName: strPtr("default-x7k2p-worker-main")},
+			}}},
+		}}},
+	}
+	v, c := newValidating(t, owner, ownedTemplate("default-x7k2p-worker-main", "train-"))
+	req := jobDeleteRequestFor(t, metav1.ObjectMeta{Name: "train-bbbbb", GenerateName: "train-"}, []corev1.PodResourceClaim{
+		{Name: "borrowed", ResourceClaimTemplateName: strPtr("default-x7k2p-worker-main")},
+	}, false)
+
+	require.True(t, v.Handle(context.Background(), req).Allowed)
+	assert.True(t, templateExists(t, c, "default-x7k2p-worker-main"), "a template another job uses must survive")
 }
