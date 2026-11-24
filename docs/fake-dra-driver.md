@@ -143,7 +143,7 @@ Important values:
 
 The `hygon` profile mirrors a real `dra.hygon.com` ResourceSlice from
 [`HYGON-AI/k8s-hcu-dra-driver`](https://github.com/HYGON-AI/k8s-hcu-dra-driver)
-(K100_AI): `type: dcu`, `productName: K100_AI`, `cores=120`, `memory=65520Mi`,
+(K100_AI): `type: hcu`, `productName: K100_AI`, `cores=120`, `memory=65520Mi`,
 and `slices=4` (one physical card can be split into at most 4 vHCU;
 `requestPolicy.default` is `1`). Driver/DeviceClass naming stays `dra.hygon.com`.
 
@@ -159,13 +159,13 @@ With the default fake driver names still set in `values.yaml`, `profile=hygon` a
 
 1. `DeviceClass` name: `dra.hygon.com`
 2. fake driver `--driver-name`: `dra.hygon.com`
-3. selector type: `device.attributes["dra.hygon.com"].type == "dcu"`
+3. selector type: `device.attributes["dra.hygon.com"].type == "hcu"`
 
 Set `drivers.fake.deviceClassName` or `drivers.fake.driverName` explicitly if you need different names.
 
 Do **not** enable `drivers.fake` with `profile=hygon` together with:
 
-1. `drivers.dcu.enabled=true` in this chart, or
+1. `drivers.hcu.enabled=true` in this chart, or
 2. a live `k8s-hcu-dra-driver` that already owns `DeviceClass` `dra.hygon.com`
 
 Either setup alone is fine; enabling both creates a duplicate DeviceClass name conflict.
