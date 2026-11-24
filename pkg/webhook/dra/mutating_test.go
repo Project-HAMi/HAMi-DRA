@@ -1117,4 +1117,20 @@ func TestCheckComputeSharingSelectableDevices(t *testing.T) {
 
 	assert.NoError(t, run(nil, gpu("a", 1, "GPU-a", 1), gpu("a", 2, "GPU-a", 0)), "a superseded generation does not count")
 	assert.ErrorContains(t, run(nil, gpu("a", 1, "GPU-a", 0), gpu("a", 2, "GPU-a", 1)), rejected)
+
+	assert.ErrorContains(t, run(nil), "no gpu.amd.com devices the claim can get are published", "a GPU published later may round the request up")
+	assert.ErrorContains(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-none"}, newNode), "no gpu.amd.com devices the claim can get are published")
+
+	values := func(vs ...int64) client.Object {
+		s := gpu("v", 1, "GPU-v", 0)
+		cu := s.Spec.Devices[0].Capacity["computeUnits"]
+		cu.RequestPolicy = &resourceapi.CapacityRequestPolicy{}
+		for _, v := range vs {
+			cu.RequestPolicy.ValidValues = append(cu.RequestPolicy.ValidValues, *resource.NewQuantity(v, resource.DecimalSI))
+		}
+		s.Spec.Devices[0].Capacity["computeUnits"] = cu
+		return s
+	}
+	assert.ErrorContains(t, run(nil, values(32, 1)), rejected, "valid values without 0 round the request up")
+	assert.NoError(t, run(nil, values(32, 0)))
 }

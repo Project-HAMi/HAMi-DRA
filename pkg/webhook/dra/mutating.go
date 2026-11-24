@@ -547,17 +547,45 @@ func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config
 
 	name := resourceapi.QualifiedName(cfg.EffectiveCoreCapacityName())
 	var minimum *resource.Quantity
+	found := false
 	err := a.eachDevice(ctx, cfg, "compute sharing", true, func(d resourceapi.Device) {
-		if c, ok := d.Capacity[name]; ok && c.RequestPolicy != nil && c.RequestPolicy.ValidRange != nil &&
-			c.RequestPolicy.ValidRange.Min != nil && c.RequestPolicy.ValidRange.Min.Sign() > 0 && selectable(d) {
-			minimum = c.RequestPolicy.ValidRange.Min
+		if !selectable(d) {
+			return
+		}
+		found = true
+		if c, ok := d.Capacity[name]; ok {
+			if m := leastAboveZero(c.RequestPolicy); m != nil {
+				minimum = m
+			}
 		}
 	})
 	if err != nil {
 		return err
 	}
+	// A device published later may round the request up, so nothing is assumed.
+	if !found {
+		return fmt.Errorf("no %s devices the claim can get are published, so compute sharing cannot be checked", cfg.EffectiveDraDriverName())
+	}
 	if minimum != nil {
 		return fmt.Errorf("%s devices accept no fewer than %s %s, so compute sharing cannot request 0; update the driver or turn compute sharing off", cfg.EffectiveDraDriverName(), minimum.String(), name)
+	}
+	return nil
+}
+
+// leastAboveZero returns the request p rounds 0 up to, or nil if p accepts 0.
+func leastAboveZero(p *resourceapi.CapacityRequestPolicy) *resource.Quantity {
+	if p == nil {
+		return nil
+	}
+	if r := p.ValidRange; r != nil && r.Min != nil && r.Min.Sign() > 0 {
+		return r.Min
+	}
+	if len(p.ValidValues) == 0 {
+		return nil
+	}
+	least := slices.MinFunc(p.ValidValues, func(x, y resource.Quantity) int { return x.Cmp(y) })
+	if least.Sign() > 0 {
+		return &least
 	}
 	return nil
 }
