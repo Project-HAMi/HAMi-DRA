@@ -86,7 +86,7 @@
 
 {{- define "hami.dra.driver.fake.deviceType" -}}
 {{- if eq (include "hami.dra.driver.fake.profile" .) "hygon" -}}
-{{- "dcu" -}}
+{{- "hcu" -}}
 {{- else -}}
 {{- "hami-gpu" -}}
 {{- end -}}
@@ -165,7 +165,7 @@ groups:
           productName:
             string: K100_AI
           type:
-            string: dcu
+            string: hcu
           uuid:
             string: {{ printf "TPXS3000021%05d" $index }}
         capacity:
