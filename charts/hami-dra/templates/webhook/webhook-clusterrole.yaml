@@ -15,3 +15,8 @@ rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["deviceclasses"]
   verbs: ["get", "list", "watch"]
+{{- if .Values.webhook.config.volcano.enabled }}
+- apiGroups: ["batch.volcano.sh"]
+  resources: ["jobs"]
+  verbs: ["list"]
+{{- end }}
