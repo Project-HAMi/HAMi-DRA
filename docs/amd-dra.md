@@ -44,7 +44,7 @@ Add `nvidia`, `hygon` or `ascend` to `deviceVendors` for a mixed cluster.
 
 ## `amdReferenceComputeUnits`
 
-`amd.com/gpucores` is a percentage; the claim asks for absolute CUs. With `amdReferenceComputeUnits` unset (0) the webhook reads the `computeUnits` of the published GPUs and uses it when they all have the same count, so a cluster of one GPU model needs no setting. Set it when GPUs of different sizes share the cluster (the webhook then rejects `gpucores` requests and lists the sizes), or for Volcano jobs, which do not read the ResourceSlices. The value is the `computeUnits` capacity of one GPU:
+`amd.com/gpucores` is a percentage; the claim asks for absolute CUs. With `amdReferenceComputeUnits` unset (0) the webhook reads the `computeUnits` of the published GPUs and uses it when they all have the same count, so a cluster of one GPU model needs no setting. Set it when GPUs of different sizes share the cluster (the webhook then rejects `gpucores` requests and lists the sizes). The value is the `computeUnits` capacity of one GPU:
 
 ```bash
 kubectl get resourceslice -o jsonpath='{range .items[*].spec.devices[*]}{.name}{" "}{.capacity.computeUnits.value}{"\n"}{end}'

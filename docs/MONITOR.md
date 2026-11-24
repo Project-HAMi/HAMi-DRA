@@ -129,6 +129,8 @@ The `hami_dra_*_core_*_ratio` metrics use a 0-1 scale, while HAMi's core ratio m
 
 The old metric names are still exported while `--legacy-metrics` is enabled (the default); set `monitor.legacyMetrics: false` in the Helm values to export only the new names.
 
+The old core metrics are the new core ratios times 100, for every vendor: a whole device is 100, also when the driver counts cores (Hygon, Ascend) or compute units (AMD).
+
 | Old metric | New metric |
 | --- | --- |
 | GPUDeviceCoreLimit | hami_dra_gpu_core_limit_ratio |
