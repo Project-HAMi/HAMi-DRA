@@ -5,7 +5,7 @@ metadata:
 rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims"]
-  verbs: ["create", "delete"]
+  verbs: ["get", "create", "delete"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceslices"]
   verbs: ["get", "list", "watch"]
@@ -15,3 +15,8 @@ rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["deviceclasses"]
   verbs: ["get", "list", "watch"]
+{{- if .Values.webhook.config.volcano.enabled }}
+- apiGroups: ["batch.volcano.sh"]
+  resources: ["jobs"]
+  verbs: ["list"]
+{{- end }}

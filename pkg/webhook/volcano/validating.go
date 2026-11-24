@@ -60,11 +60,44 @@ func (v *ValidatingAdmission) Handle(ctx context.Context, req admission.Request)
 	}
 	klog.V(5).Infof("Validating Job(%s/%s) for request: %s", req.Namespace, job.Name, req.Operation)
 
-	for _, name := range getResourceClaimTemplateName(job) {
+	names := getResourceClaimTemplateName(job)
+	if len(names) == 0 {
+		return admission.Allowed("")
+	}
+	inUse, err := v.templatesOfOtherJobs(ctx, job)
+	if err != nil {
+		klog.Warningf("Failed to list Jobs in %s, keeping the templates of Job %s: %v", job.Namespace, job.Name, err)
+		return admission.Allowed("")
+	}
+	for _, name := range names {
+		if inUse[name] {
+			continue
+		}
 		v.deleteResourceClaimTemplate(ctx, job, name)
 	}
 
 	return admission.Allowed("")
+}
+
+// templatesOfOtherJobs returns the templates referenced by the other jobs of the
+// namespace. A job created with generateName records only its prefix as owner,
+// so another job of the same prefix referencing the template is not told apart
+// by the owner alone.
+func (v *ValidatingAdmission) templatesOfOtherJobs(ctx context.Context, job *vcv1alpha1.Job) (map[string]bool, error) {
+	jobs := &vcv1alpha1.JobList{}
+	if err := v.Reader.List(ctx, jobs, client.InNamespace(job.Namespace)); err != nil {
+		return nil, err
+	}
+	inUse := map[string]bool{}
+	for i := range jobs.Items {
+		if jobs.Items[i].Name == job.Name {
+			continue
+		}
+		for _, name := range getResourceClaimTemplateName(&jobs.Items[i]) {
+			inUse[name] = true
+		}
+	}
+	return inUse, nil
 }
 
 // deleteResourceClaimTemplate deletes the template only if the mutating webhook
