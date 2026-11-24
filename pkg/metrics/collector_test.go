@@ -158,6 +158,24 @@ vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",dev
 	}
 }
 
+func TestCollect_PodMetricsMatchDriver(t *testing.T) {
+	col := newPodTestCollector(
+		[]*cache.NodeDevice{
+			{Name: "gpu0", Driver: "a.example.com", UUID: "uuid-a"},
+			{Name: "gpu0", Driver: "b.example.com", UUID: "uuid-b"},
+		},
+		[]*cache.AllocationResult{{Namespace: "default", Driver: "b.example.com", DeviceName: "gpu0", Cores: 50, Memory: 1}},
+	)
+	want := `
+# HELP hami_dra_vgpu_memory_allocated_bytes vGPU Device memory allocated for a container
+# TYPE hami_dra_vgpu_memory_allocated_bytes gauge
+hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-b",namespace="default",node="node1",pod="pod1"} 1
+`
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), "hami_dra_vgpu_memory_allocated_bytes"); err != nil {
+		t.Errorf("pod metric on the wrong device: %v", err)
+	}
+}
+
 func TestCollect_DeviceIndexUsesMinor(t *testing.T) {
 	// The slice lists gpu1 before gpu0, so each position differs from the minor.
 	minor0, minor1 := int64(0), int64(1)
