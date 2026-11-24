@@ -200,6 +200,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.DeviceConfig = deviceConfig
 	mutatingAdmission.DeviceConfigs = deviceConfigs
 	mutatingAdmission.ResourceClaimTemplate = opts.ResourceClaimTemplate
+	mutatingAdmission.Reader = hookManager.GetAPIReader()
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
 
 	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}

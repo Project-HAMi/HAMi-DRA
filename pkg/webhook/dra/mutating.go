@@ -31,6 +31,8 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -44,8 +46,11 @@ import (
 
 // MutatingAdmission mutates API request if necessary.
 type MutatingAdmission struct {
-	Decoder       admission.Decoder
-	Client        client.Client
+	Decoder admission.Decoder
+	Client  client.Client
+	// Reader reads a same-named claim or template directly from the API server
+	// to check whether it can be reused, without a cluster-wide informer.
+	Reader        client.Reader
 	DeviceConfig  *config.DRADeviceConfig
 	DeviceConfigs []*config.DRADeviceConfig
 	// ResourceClaimTemplate makes every converted Pod reference a ResourceClaimTemplate.
@@ -178,6 +183,39 @@ func newClaimObject(name, namespace string, spec resourceapi.ResourceClaimSpec, 
 	return &resourceapi.ResourceClaim{ObjectMeta: meta, Spec: spec}
 }
 
+// createClaimObject creates obj. The pod has no UID yet to own it, so when
+// the pod is rejected after this webhook (quota, another webhook) the object
+// stays behind under the name the pod gets again on retry. Such a leftover is
+// reused: not being deleted, not reserved by a pod, and with the same spec.
+func (a *MutatingAdmission) createClaimObject(ctx context.Context, obj client.Object) error {
+	err := a.Client.Create(ctx, obj)
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	reader := a.Reader
+	if reader == nil {
+		reader = a.Client
+	}
+	key := client.ObjectKeyFromObject(obj)
+	switch want := obj.(type) {
+	case *resourceapi.ResourceClaim:
+		existing := &resourceapi.ResourceClaim{}
+		if getErr := reader.Get(ctx, key, existing); getErr == nil && existing.DeletionTimestamp == nil &&
+			len(existing.Status.ReservedFor) == 0 && equality.Semantic.DeepEqual(existing.Spec, want.Spec) {
+			klog.V(4).Infof("Reusing ResourceClaim %s left by an earlier admission", key)
+			return nil
+		}
+	case *resourceapi.ResourceClaimTemplate:
+		existing := &resourceapi.ResourceClaimTemplate{}
+		if getErr := reader.Get(ctx, key, existing); getErr == nil && existing.DeletionTimestamp == nil &&
+			existing.Labels[constants.DraLabel] != "" && equality.Semantic.DeepEqual(existing.Spec.Spec, want.Spec.Spec) {
+			klog.V(4).Infof("Reusing ResourceClaimTemplate %s left by an earlier admission", key)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w; it is in use or asks for other devices, delete it to admit the pod", err)
+}
+
 func claimKind(asTemplate bool) string {
 	if asTemplate {
 		return "ResourceClaimTemplate"
@@ -213,8 +251,16 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	for _, cfg := range a.configs() {
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
-		if !ok {
+		// As with the device plugin, a zero count asks for no device. A claim
+		// with count 0 would be defaulted to one whole device.
+		if !ok || countQty.Sign() <= 0 {
 			continue
+		}
+		if countQty.MilliValue()%1000 != 0 {
+			// The API server rejects a fractional extended resource, but only
+			// after it is stripped here, so a claim would round it up.
+			cleanup()
+			return nil, fmt.Errorf("%s must be a whole number, got %s", countResourceName, countQty.String())
 		}
 
 		rcName := resourceClaimName(pod, container.Name, cfg)
@@ -270,7 +316,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		}
 
 		obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
-		if err := a.Client.Create(ctx, obj); err != nil {
+		if err := a.createClaimObject(ctx, obj); err != nil {
 			cleanup()
 			return nil, fmt.Errorf("failed to create %s %s/%s: %w", claimKind(asTemplate), pod.Namespace, rcName, err)
 		}
