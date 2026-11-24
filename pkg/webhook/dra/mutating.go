@@ -305,22 +305,9 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 			}
 		}
 
-		if err := a.addAnnotationSelectors(resourceclaim, pod, cfg); err != nil {
+		if err := a.completeClaim(ctx, resourceclaim, pod, cfg, pctQty); err != nil {
 			cleanup()
 			return nil, err
-		}
-		// After the annotation selectors, so only devices the claim can get count.
-		if exactly := resourceclaim.Spec.Devices.Requests[0].Exactly; cfg.ShareCompute(exactly.Capacity.Requests, hasMem || pctQty != nil) {
-			if err := a.CheckComputeSharing(ctx, cfg, exactly.Selectors); err != nil {
-				cleanup()
-				return nil, err
-			}
-		}
-		if pctQty != nil {
-			if err := a.requestMemoryPercentage(ctx, resourceclaim, cfg, *pctQty); err != nil {
-				cleanup()
-				return nil, err
-			}
 		}
 
 		obj := newClaimObject(rcName, pod.Namespace, resourceclaim.Spec, asTemplate)
@@ -564,11 +551,30 @@ func (a *MutatingAdmission) deviceCapacities(ctx context.Context, cfg *config.DR
 	return sizes, err
 }
 
-// CheckComputeSharing rejects a 0-core request when a published device that
+// completeClaim adds the annotation selectors, then the 0-core request of
+// compute sharing, checked against only the devices the selectors allow, then
+// the memory percentage, which copies the request into its alternatives.
+func (a *MutatingAdmission) completeClaim(ctx context.Context, claim *resourceapi.ResourceClaim, pod *corev1.Pod, cfg *config.DRADeviceConfig, pctQty *resource.Quantity) error {
+	if err := a.addAnnotationSelectors(claim, pod, cfg); err != nil {
+		return err
+	}
+	exactly := claim.Spec.Devices.Requests[0].Exactly
+	_, hasMem := exactly.Capacity.Requests["memory"]
+	if cfg.ShareCompute(exactly.Capacity.Requests, hasMem || pctQty != nil) {
+		if err := a.checkComputeSharing(ctx, cfg, exactly.Selectors); err != nil {
+			return err
+		}
+	}
+	if pctQty != nil {
+		return a.requestMemoryPercentage(ctx, claim, cfg, *pctQty)
+	}
+	return nil
+}
+
+// checkComputeSharing rejects a 0-core request when a published device that
 // selectors can pick accepts no fewer than some cores: the scheduler would
 // round the request up and the driver would pin the slice to those few cores.
-// The Volcano webhook runs it too.
-func (a *MutatingAdmission) CheckComputeSharing(ctx context.Context, cfg *config.DRADeviceConfig, selectors []resourceapi.DeviceSelector) error {
+func (a *MutatingAdmission) checkComputeSharing(ctx context.Context, cfg *config.DRADeviceConfig, selectors []resourceapi.DeviceSelector) error {
 	compiler := draCEL.GetCompiler(draCEL.Features{EnableConsumableCapacity: true})
 	compiled := make([]draCEL.CompilationResult, 0, len(selectors))
 	for _, sel := range selectors {

@@ -444,13 +444,16 @@ func TestHandleTaskComputeSharing(t *testing.T) {
 		}}
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
-	// As on the Pod path, a driver that rounds 0 CUs up, or none published yet, rejects the job.
+	// As on the Pod path, a driver that rounds 0 CUs up, or none published yet,
+	// rejects the job; only GPUs the task's annotations allow count.
 	run := func(annotations map[string]string, objs ...client.Object) error {
 		_, _, err := (&MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build(), DeviceConfig: cfgs[0]}).handleTask(context.Background(), slice(annotations), job)
 		return err
 	}
 	assert.ErrorContains(t, run(nil, gpu("old", 1)), "accept no fewer than 1 computeUnits")
 	assert.ErrorContains(t, run(nil), "compute sharing cannot be checked")
+	assert.ErrorContains(t, run(nil, gpu("old", 1), gpu("new", 0)), "accept no fewer than 1 computeUnits")
+	assert.NoError(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-new"}, gpu("old", 1), gpu("new", 0)))
 
 	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(gpu("new", 0)).Build(), DeviceConfig: cfgs[0]}
 	task := &vcv1alpha1.TaskSpec{

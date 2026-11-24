@@ -266,11 +266,6 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 				}
 			}
 		}
-		if requests := resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests; cfg.ShareCompute(requests, hasMem || pctQty != nil) {
-			if err := a.podPath().CheckComputeSharing(ctx, cfg, nil); err != nil {
-				return rctNames, created, err
-			}
-		}
 		if err := a.podPath().CompleteClaimSpec(ctx, &resourceclaimtemplate.Spec.Spec, annotations, cfg, pctQty); err != nil {
 			return rctNames, created, err
 		}
