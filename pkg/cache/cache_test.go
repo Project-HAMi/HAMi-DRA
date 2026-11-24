@@ -17,6 +17,8 @@ limitations under the License.
 package cache
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -27,7 +29,9 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestNewCache(t *testing.T) {
@@ -56,7 +60,7 @@ func TestCache_Start_Stop(t *testing.T) {
 	c := NewCacheWithClient(client)
 
 	// Start cache
-	err := c.Start()
+	err := c.Start(context.Background())
 	if err != nil {
 		t.Fatalf("Start() failed: %v", err)
 	}
@@ -75,6 +79,55 @@ func TestCache_Start_Stop(t *testing.T) {
 	// Check if stopped
 	if c.IsReady() {
 		t.Error("Cache should not be ready after Stop()")
+	}
+}
+
+func TestCache_StartReturnsWhenContextEnds(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("list", "resourceslices", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("resourceslices is forbidden")
+	})
+	c := NewCacheWithClient(client)
+	defer c.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- c.Start(ctx) }()
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("Start succeeded although the list keeps failing")
+		}
+		if c.IsReady() {
+			t.Error("cache must not be ready")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start did not return after its context ended")
+	}
+}
+
+// The context only bounds the sync; the informers keep running after it ends.
+func TestCache_InformersOutliveStartContext(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	c := NewCacheWithClient(client)
+	defer c.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := c.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	cancel()
+
+	slice := createTestResourceSlice("late", "node-1", "gpu-0", "uuid-0")
+	if _, err := client.ResourceV1().ResourceSlices().Create(context.Background(), slice, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(c.NodeDevices.GetDevices("node-1")) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("a slice created after Start's context ended was never seen")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
