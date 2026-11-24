@@ -56,7 +56,7 @@ func TestHandleTaskZeroCountRequestsNoDevice(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
 
-	names, err := admission.handleTask(context.Background(), task, job)
+	names, _, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
 	assert.Empty(t, names)
 	assert.Empty(t, task.Template.Spec.Containers[0].Resources.Claims)
@@ -81,6 +81,6 @@ func TestHandleTaskRejectsFractionalCount(t *testing.T) {
 	}
 	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
 
-	_, err := admission.handleTask(context.Background(), task, job)
+	_, _, err := admission.handleTask(context.Background(), task, job)
 	require.ErrorContains(t, err, "nvidia.com/gpu must be a whole number")
 }
