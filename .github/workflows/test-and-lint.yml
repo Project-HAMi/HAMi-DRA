@@ -87,6 +87,25 @@ jobs:
           print("fake-only render: driver ClusterRole has no pods rule")
           '
 
+      - name: Check the fake Hygon profile matches the webhook device type
+        run: |
+          helm template hami-dra ./charts/hami-dra \
+            --set drivers.fake.enabled=true \
+            --set drivers.fake.profile=hygon \
+            --set drivers.nvidia.enabled=false \
+            --set 'deviceVendors={hygon}' \
+            | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          dc = next(d for d in docs if d.get("kind") == "DeviceClass")
+          expr = dc["spec"]["selectors"][0]["cel"]["expression"]
+          assert expr.endswith(".type == \"hcu\""), expr
+          cm = next(d for d in docs if d.get("kind") == "ConfigMap" and "fake" in d["metadata"]["name"])
+          types = {dev["attributes"]["type"]["string"] for data in cm["data"].values() for g in yaml.safe_load(data)["groups"] for dev in g["devices"]}
+          assert types == {"hcu"}, types
+          print("fake Hygon render: DeviceClass and devices use type hcu")
+          '
+
       - name: Check driver pods RBAC with NVIDIA driver enabled
         run: |
           helm template hami-dra ./charts/hami-dra \
