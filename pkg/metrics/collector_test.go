@@ -158,6 +158,24 @@ vGPUDeviceCoreAllocated{devicebrand="NVIDIA",deviceidx="1",devicename="gpu1",dev
 	}
 }
 
+func TestCollect_PodMetricsMatchDriver(t *testing.T) {
+	col := newPodTestCollector(
+		[]*cache.NodeDevice{
+			{Name: "gpu0", Driver: "a.example.com", UUID: "uuid-a"},
+			{Name: "gpu0", Driver: "b.example.com", UUID: "uuid-b"},
+		},
+		[]*cache.AllocationResult{{Namespace: "default", Driver: "b.example.com", DeviceName: "gpu0", Cores: 50, Memory: 1}},
+	)
+	want := `
+# HELP hami_dra_vgpu_memory_allocated_bytes vGPU Device memory allocated for a container
+# TYPE hami_dra_vgpu_memory_allocated_bytes gauge
+hami_dra_vgpu_memory_allocated_bytes{device_uuid="uuid-b",namespace="default",node="node1",pod="pod1"} 1
+`
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), "hami_dra_vgpu_memory_allocated_bytes"); err != nil {
+		t.Errorf("pod metric on the wrong device: %v", err)
+	}
+}
+
 func TestCollect_DeviceIndexUsesMinor(t *testing.T) {
 	// The slice lists gpu1 before gpu0, so each position differs from the minor.
 	minor0, minor1 := int64(0), int64(1)
@@ -237,6 +255,32 @@ func TestCollect_LegacyDisabled(t *testing.T) {
 		if got := testutil.CollectAndCount(col, name); got != 0 {
 			t.Errorf("legacy metric %s emitted while the flag is off, got %d", name, got)
 		}
+	}
+}
+
+// The legacy pod metric is on a 0-100 scale like the node metric, also for
+// devices whose cores are an absolute count (AMD CUs here).
+func TestCollect_LegacyPodCoresArePercent(t *testing.T) {
+	c := cache.NewCacheWithClient(fake.NewSimpleClientset())
+	c.NodeDevices.Nodes["node1"] = &cache.NodeDeviceInfo{Devices: []*cache.NodeDevice{{
+		Name: "gpu0", UUID: "uuid-1", CoresTotal: 32, CoresUsed: 16, CoreScale: 32,
+	}}}
+	c.NodeDevices.Claims.Claims["default/claim1"] = &cache.DeviceAllocation{
+		NodeName:          "node1",
+		UsedBy:            []string{"pod1"},
+		AllocationResults: []*cache.AllocationResult{{Namespace: "default", DeviceName: "gpu0", Cores: 16}},
+	}
+	col := NewCollector(c, true, (&config.Config{}).DeviceTypes())
+	want := `
+# HELP GPUDeviceCoreAllocated Device core allocated for a certain GPU
+# TYPE GPUDeviceCoreAllocated gauge
+GPUDeviceCoreAllocated{devicebrand="",deviceidx="0",devicename="gpu0",deviceproductname="",deviceuuid="uuid-1",nodeid="node1"} 50
+# HELP vGPUDeviceCoreAllocated vGPU Device core allocated for a container
+# TYPE vGPUDeviceCoreAllocated gauge
+vGPUDeviceCoreAllocated{devicebrand="",deviceidx="0",devicename="gpu0",deviceproductname="",deviceuuid="uuid-1",nodeid="node1",podname="pod1",podnamespace="default"} 50
+`
+	if err := testutil.CollectAndCompare(col, strings.NewReader(want), "GPUDeviceCoreAllocated", "vGPUDeviceCoreAllocated"); err != nil {
+		t.Errorf("legacy core metrics mismatch: %v", err)
 	}
 }
 

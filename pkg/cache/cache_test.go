@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -601,6 +602,7 @@ func createTestResourceSlice(name, nodeName, deviceName, uuid string) *resourcea
 			Name: name,
 		},
 		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   "test-driver",
 			NodeName: stringPtr(nodeName),
 			Devices: []resourceapi.Device{
 				{
@@ -716,6 +718,7 @@ func TestCache_ComputeUnitsCountAsCores(t *testing.T) {
 	}
 	c.onAddSlice(slice)
 	claim := createTestResourceClaim("slice", "default", "gpu-node", "gpu-1-129", 0, 2097152000)
+	claim.Status.Allocation.Devices.Results[0].Driver = "gpu.amd.com"
 	claim.Status.Allocation.Devices.Results[0].ConsumedCapacity = map[resourceapi.QualifiedName]resource.Quantity{
 		constants.DeviceCapacityComputeUnits: resource.MustParse("16"),
 		constants.DeviceCapacityMemory:       resource.MustParse("2097152000"),
@@ -726,6 +729,38 @@ func TestCache_ComputeUnitsCountAsCores(t *testing.T) {
 	if device.CoresTotal != 32 || device.CoresUsed != 16 {
 		t.Fatalf("got CoresTotal %d CoresUsed %d, want 32 and 16", device.CoresTotal, device.CoresUsed)
 	}
+	if got := device.CoreRatio(device.CoresUsed); got != 0.5 {
+		t.Errorf("CoreRatio(CoresUsed) = %v, want 0.5", got)
+	}
+	if got := device.CoreRatio(device.CoresTotal); got != 1 {
+		t.Errorf("CoreRatio(CoresTotal) = %v, want 1", got)
+	}
+}
+
+// Hygon and Ascend publish their absolute core count as "cores", so a ratio
+// is relative to that count, not to 100.
+func TestCache_AbsoluteCoresScaleByCapacity(t *testing.T) {
+	c := &Cache{NodeDevices: NewNodeDevices(), stopCh: make(chan struct{})}
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "hygon"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   "dra.hygon.com",
+			NodeName: stringPtr("hcu-node"),
+			Devices: []resourceapi.Device{{
+				Name: "hcu-0",
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+					constants.DeviceCapacityCores:  {Value: resource.MustParse("120")},
+					constants.DeviceCapacityMemory: {Value: resource.MustParse("64Gi")},
+				},
+			}},
+		},
+	}
+	c.onAddSlice(slice)
+	claim := createTestResourceClaim("half", "default", "hcu-node", "hcu-0", 60, 1024)
+	claim.Status.Allocation.Devices.Results[0].Driver = "dra.hygon.com"
+	c.onAddClaim(claim)
+
+	device := c.NodeDevices.GetDevices("hcu-node")[0]
 	if got := device.CoreRatio(device.CoresUsed); got != 0.5 {
 		t.Errorf("CoreRatio(CoresUsed) = %v, want 0.5", got)
 	}
@@ -754,6 +789,105 @@ func TestCache_MultipleSlicesPerNode(t *testing.T) {
 	c.onDeleteSlice(b)
 	if got := c.NodeDevices.GetDevices("node-1"); len(got) != 0 {
 		t.Errorf("node should be gone once its last slice is deleted, got %d devices", len(got))
+	}
+}
+
+func TestCache_OtherSliceUpdateKeepsUsage(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")
+	b := createTestResourceSlice("slice-b", "node-1", "gpu-1", "uuid-1")
+	c.onAddSlice(a)
+	c.onAddSlice(b)
+	c.NodeDevices.onAddClaim(createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024))
+
+	// An update of slice-b, such as an informer resync, must not count claim-1 again.
+	c.onUpdateSlice(b, b)
+	c.onUpdateSlice(b, b)
+	for _, d := range c.NodeDevices.GetDevices("node-1") {
+		if d.Name == "gpu-0" && (d.CoresUsed != 30 || d.MemoryUsed != 1024) {
+			t.Fatalf("gpu-0 usage = %d cores %d memory, want 30 and 1024", d.CoresUsed, d.MemoryUsed)
+		}
+	}
+}
+
+func TestCache_SameDeviceNameOnTwoDrivers(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")
+	b := createTestResourceSlice("slice-b", "node-1", "gpu-0", "uuid-1")
+	b.Spec.Driver = "other-driver"
+	c.onAddSlice(a)
+	c.onAddSlice(b)
+	claim := createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024)
+	claim.Status.Allocation.Devices.Results[0].Driver = "other-driver"
+	c.NodeDevices.onAddClaim(claim)
+	c.onUpdateSlice(a, a)
+
+	for _, d := range c.NodeDevices.GetDevices("node-1") {
+		want := int64(0)
+		if d.Driver == "other-driver" {
+			want = 30
+		}
+		if d.CoresUsed != want {
+			t.Errorf("%s/%s CoresUsed = %d, want %d", d.Driver, d.Name, d.CoresUsed, want)
+		}
+	}
+	c.NodeDevices.onDeleteClaim(claim)
+	for _, d := range c.NodeDevices.GetDevices("node-1") {
+		if d.CoresUsed != 0 {
+			t.Errorf("%s/%s CoresUsed = %d after the claim is gone", d.Driver, d.Name, d.CoresUsed)
+		}
+	}
+}
+
+// Slice and claim events come from different informers; usage must come out
+// the same whatever their order.
+func TestCache_ConcurrentSliceAndClaimEvents(t *testing.T) {
+	for run := range 20 {
+		c := NewCacheWithClient(fake.NewSimpleClientset())
+		a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")
+		c.onAddSlice(a)
+		var wg sync.WaitGroup
+		for i := range 100 {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				c.NodeDevices.onAddClaim(createTestResourceClaim(fmt.Sprintf("claim-%d", i), "default", "node-1", "gpu-0", 1, 1))
+			}()
+			go func() {
+				defer wg.Done()
+				c.onUpdateSlice(a, a)
+			}()
+		}
+		wg.Wait()
+		if d := c.NodeDevices.GetDevices("node-1")[0]; d.CoresUsed != 100 {
+			t.Fatalf("run %d: CoresUsed = %d after 100 claims, want 100", run, d.CoresUsed)
+		}
+	}
+}
+
+// A claim update must not show the claim's device as free while it is applied.
+func TestCache_ClaimUpdateIsAtomic(t *testing.T) {
+	c := NewCacheWithClient(fake.NewSimpleClientset())
+	c.onAddSlice(createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0"))
+	claim := createTestResourceClaim("claim-1", "default", "node-1", "gpu-0", 30, 1024)
+	c.NodeDevices.onAddClaim(claim)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 2000 {
+			c.NodeDevices.onUpdateClaim(claim, claim)
+		}
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		if d := c.NodeDevices.GetDevices("node-1")[0]; d.CoresUsed != 30 {
+			t.Fatalf("CoresUsed = %d during a claim update, want 30", d.CoresUsed)
+		}
 	}
 }
 
