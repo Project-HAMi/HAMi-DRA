@@ -684,6 +684,38 @@ func TestCache_ComputeUnitsCountAsCores(t *testing.T) {
 	}
 }
 
+// Hygon and Ascend publish their absolute core count as "cores", so a ratio
+// is relative to that count, not to 100.
+func TestCache_AbsoluteCoresScaleByCapacity(t *testing.T) {
+	c := &Cache{NodeDevices: NewNodeDevices(), stopCh: make(chan struct{})}
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "hygon"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   "dra.hygon.com",
+			NodeName: stringPtr("hcu-node"),
+			Devices: []resourceapi.Device{{
+				Name: "hcu-0",
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+					constants.DeviceCapacityCores:  {Value: resource.MustParse("120")},
+					constants.DeviceCapacityMemory: {Value: resource.MustParse("64Gi")},
+				},
+			}},
+		},
+	}
+	c.onAddSlice(slice)
+	claim := createTestResourceClaim("half", "default", "hcu-node", "hcu-0", 60, 1024)
+	claim.Status.Allocation.Devices.Results[0].Driver = "dra.hygon.com"
+	c.onAddClaim(claim)
+
+	device := c.NodeDevices.GetDevices("hcu-node")[0]
+	if got := device.CoreRatio(device.CoresUsed); got != 0.5 {
+		t.Errorf("CoreRatio(CoresUsed) = %v, want 0.5", got)
+	}
+	if got := device.CoreRatio(device.CoresTotal); got != 1 {
+		t.Errorf("CoreRatio(CoresTotal) = %v, want 1", got)
+	}
+}
+
 func TestCache_MultipleSlicesPerNode(t *testing.T) {
 	c := NewCacheWithClient(fake.NewSimpleClientset())
 	a := createTestResourceSlice("slice-a", "node-1", "gpu-0", "uuid-0")

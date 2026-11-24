@@ -201,7 +201,7 @@ func (c *Collector) collectPodMetrics(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(
 			legacyPodvGPUCoreAllocatedDesc,
 			prometheus.GaugeValue,
-			float64(pd.cores),
+			pd.device.CoreRatio(pd.cores)*100,
 			pd.node,
 			pd.device.UUID,
 			pd.deviceIdx,
