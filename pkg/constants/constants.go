@@ -70,6 +70,8 @@ const (
 	AscendNoUseTypeAnnotation = "hami.io/no-use-nputype"
 
 	DraLabel = "hami.io/dra"
+	// DraOwnerAnnotation names the Volcano job a ResourceClaimTemplate was created for.
+	DraOwnerAnnotation = "hami.io/dra-owner"
 
 	DeviceAttributeUUID         = "uuid"
 	DeviceAttributeMinor        = "minor"

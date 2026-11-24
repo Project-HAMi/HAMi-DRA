@@ -200,11 +200,13 @@ func Run(ctx context.Context, opts *options.Options) error {
 	mutatingAdmission.DeviceConfig = deviceConfig
 	mutatingAdmission.DeviceConfigs = deviceConfigs
 	mutatingAdmission.ResourceClaimTemplate = opts.ResourceClaimTemplate
+	mutatingAdmission.Reader = hookManager.GetAPIReader()
 	hookServer.Register("/mutate", &webhook.Admission{Handler: mutatingAdmission})
 
 	mutatingAdmissionVolcano := &volcano.MutatingAdmission{}
 	mutatingAdmissionVolcano.Decoder = decoder
 	mutatingAdmissionVolcano.Client = hookManager.GetClient()
+	mutatingAdmissionVolcano.Reader = hookManager.GetAPIReader()
 	mutatingAdmissionVolcano.DeviceConfig = deviceConfig
 	mutatingAdmissionVolcano.DeviceConfigs = deviceConfigs
 	hookServer.Register("/mutate-volcano", &webhook.Admission{Handler: mutatingAdmissionVolcano})
@@ -218,6 +220,7 @@ func Run(ctx context.Context, opts *options.Options) error {
 	validatingAdmissionVolcano := &volcano.ValidatingAdmission{}
 	validatingAdmissionVolcano.Decoder = decoder
 	validatingAdmissionVolcano.Client = hookManager.GetClient()
+	validatingAdmissionVolcano.Reader = hookManager.GetAPIReader()
 	hookServer.Register("/validate-volcano", &webhook.Admission{Handler: validatingAdmissionVolcano})
 
 	if err := hookManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

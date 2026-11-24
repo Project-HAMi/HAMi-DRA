@@ -43,8 +43,7 @@ amdDraDriverName: gpu.amd.com
 # When a Pod requests amd.com/gpucores (percentage), the webhook uses the
 # computeUnits of the published AMD GPUs when they all have the same count, so 0
 # works on a cluster of one GPU model. Set it to one GPU's computeUnits capacity
-# (kubectl get resourceslice -o yaml) when the GPUs differ in size, or for
-# Volcano jobs, which do not read the ResourceSlices.
+# (kubectl get resourceslice -o yaml) when the GPUs differ in size.
 amdReferenceComputeUnits: 0
 deviceVendors:
   - nvidia  # nvidia | hygon | amd | enflame | ascend
