@@ -74,7 +74,7 @@ spec:
 
 - `amd.com/gpumem-percentage: 10` takes a percentage of the GPU memory instead of MiB.
 - Without `gpumem`, `gpumem-percentage` and `gpucores` the pod gets the whole GPU and no limits.
-- With `amdComputeSharing=true` a pod with `gpumem` or `gpumem-percentage` but no `gpucores` shares all CUs of its GPU with the other pods there: it gets no `HSA_CU_MASK`, only its memory limit. Without the setting such a pod takes all CUs, so no other slice fits next to it. Pods with `gpucores` keep their own CUs, but a sharing pod on the same GPU runs on those CUs too. Needs amd-dra-driver 0.5.0 or newer; with an older driver the webhook rejects such pods.
+- With `amdComputeSharing=true` a pod with `gpumem` or `gpumem-percentage` but no `gpucores` shares all CUs of its GPU with the other pods there: it gets no `HSA_CU_MASK`, only its memory limit. Without the setting such a pod takes all CUs, so no other slice fits next to it. Pods with `gpucores` keep their own CUs, but a sharing pod on the same GPU runs on those CUs too. Needs amd-dra-driver 0.5.0 or newer; with an older driver the webhook rejects such pods and Volcano jobs.
 - Annotations select GPUs: `amd.com/use-gpu-uuid`, `amd.com/nouse-gpu-uuid`, `amd.com/use-gputype` and `amd.com/nouse-gputype`. A type matches any part of the product name, for example `MI325X` for `AMD_Instinct_MI325X` (driver 0.4.1 or newer; older drivers published `AMD_Radeon_Graphics` for the MI325X).
 - The label `hami.io/skip-dra: "true"` keeps a pod out of the conversion. Other values do not.
 

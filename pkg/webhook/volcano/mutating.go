@@ -194,7 +194,12 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		}
 		requests := resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests
 		_, hasMem := requests["memory"]
-		cfg.ShareCompute(requests, hasMem)
+		if cfg.ShareCompute(requests, hasMem) {
+			check := &dra.MutatingAdmission{Client: a.Client, DeviceConfig: a.DeviceConfig, DeviceConfigs: a.DeviceConfigs}
+			if err := check.CheckComputeSharing(ctx, cfg, nil); err != nil {
+				return rctNames, err
+			}
+		}
 
 		if err := a.Client.Create(ctx, resourceclaimtemplate); err != nil {
 			return rctNames, fmt.Errorf("failed to create ResourceClaimTemplate %s/%s: %w", namespace, rctName, err)

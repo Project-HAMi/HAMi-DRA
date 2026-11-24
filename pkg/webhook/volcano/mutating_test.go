@@ -391,7 +391,37 @@ func TestHandleTaskComputeSharing(t *testing.T) {
 	require.NoError(t, vcv1alpha1.AddToScheme(sch))
 	cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: true}}).DRADevices([]string{config.VendorAMD})
 	require.NoError(t, err)
-	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).Build(), DeviceConfig: cfgs[0]}
+	gpu := func(minCU int64) *resourceapi.ResourceSlice {
+		typ := "amdgpu"
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "a"},
+			Devices: []resourceapi.Device{{
+				Name:       "gpu-0",
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": {StringValue: &typ}},
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"computeUnits": {
+					Value:         resource.MustParse("32"),
+					RequestPolicy: &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(minCU, resource.DecimalSI)}},
+				}},
+			}},
+		}}
+	}
+	slice := func() *vcv1alpha1.TaskSpec {
+		return &vcv1alpha1.TaskSpec{Name: "t", Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{
+			{Name: "slice", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"amd.com/gpu": resource.MustParse("1"), "amd.com/gpumem": resource.MustParse("2000"),
+			}}},
+		}}}}
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+	// As on the Pod path, a driver that rounds 0 CUs up, or none published yet, rejects the job.
+	run := func(objs ...client.Object) error {
+		_, err := (&MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build(), DeviceConfig: cfgs[0]}).handleTask(context.Background(), slice(), job)
+		return err
+	}
+	assert.ErrorContains(t, run(gpu(1)), "accept no fewer than 1 computeUnits")
+	assert.ErrorContains(t, run(), "compute sharing cannot be checked")
+
+	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(gpu(0)).Build(), DeviceConfig: cfgs[0]}
 	task := &vcv1alpha1.TaskSpec{
 		Name: "t",
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{
@@ -403,7 +433,7 @@ func TestHandleTaskComputeSharing(t *testing.T) {
 			}}},
 		}}},
 	}
-	names, err := admission.handleTask(context.Background(), task, &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}})
+	names, err := admission.handleTask(context.Background(), task, job)
 	require.NoError(t, err)
 	require.Len(t, names, 2)
 
