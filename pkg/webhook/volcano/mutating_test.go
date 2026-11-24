@@ -19,6 +19,7 @@ package volcano
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -444,6 +445,102 @@ func TestHandleTaskReusesLeftoverTemplate(t *testing.T) {
 	require.NoError(t, fakeClient.Update(context.Background(), rct))
 	_, _, err = admission.handleTask(context.Background(), newTask(), job)
 	require.ErrorContains(t, err, "delete it to admit the job")
+}
+
+// The Volcano path converts a task like the Pod path converts a pod: type
+// annotations become selectors, a memory percentage is sized by the published
+// devices, and core percentages work without referenceComputeUnits.
+func TestHandleTaskConvertsLikeThePodPath(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	str := func(v string) resourceapi.DeviceAttribute { return resourceapi.DeviceAttribute{StringValue: &v} }
+	gpu := func(name string, mem int64) resourceapi.Device {
+		return resourceapi.Device{
+			Name:       name,
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": str("amdgpu")},
+			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+				"memory":       {Value: *resource.NewQuantity(mem, resource.BinarySI)},
+				"computeUnits": {Value: resource.MustParse("304")},
+			},
+		}
+	}
+	slice := &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: resourceapi.ResourceSliceSpec{
+		Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "a"},
+		Devices: []resourceapi.Device{gpu("gpu-1", 196592<<20)},
+	}}
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).WithObjects(slice).Build()
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	admission := &MutatingAdmission{Client: fakeClient, DeviceConfigs: cfgs}
+	task := &vcv1alpha1.TaskSpec{
+		Name: "t",
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{constants.AmdNoUseTypeAnnotation: "MI210"}},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name: "c",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					"amd.com/gpu":               resource.MustParse("1"),
+					"amd.com/gpumem-percentage": resource.MustParse("25"),
+					"amd.com/gpucores":          resource.MustParse("25"),
+				}},
+			}}},
+		},
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+
+	names, _, err := admission.handleTask(context.Background(), task, job)
+	require.NoError(t, err)
+	assert.Empty(t, task.Template.Spec.Containers[0].Resources.Limits, "every converted resource must be stripped")
+	rct := &resourceapi.ResourceClaimTemplate{}
+	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, rct))
+	req := rct.Spec.Spec.Devices.Requests[0]
+	require.Len(t, req.FirstAvailable, 1, "the memory percentage is sized by the published GPU")
+	sub := req.FirstAvailable[0]
+	mem, cus := sub.Capacity.Requests["memory"], sub.Capacity.Requests["computeUnits"]
+	assert.Equal(t, int64(49148)<<20, mem.Value())
+	assert.Equal(t, int64(76), cus.Value(), "25% of the published 304 CUs")
+	var exprs []string
+	for _, sel := range sub.Selectors {
+		exprs = append(exprs, sel.CEL.Expression)
+	}
+	assert.Contains(t, strings.Join(exprs, " "), "mi210", "the nouse-gputype annotation becomes a selector")
+}
+
+// kubectl apply patches a job as JSON merge patch, so a re-applied job has
+// its device resources back and the claims of its creation gone. The update
+// is converted again, reusing the job's template, without duplicating claims.
+func TestConvertJobOnUpdate(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	fakeClient := fake.NewClientBuilder().WithScheme(sch).Build()
+	a := &MutatingAdmission{
+		Client:       fakeClient,
+		DeviceConfig: &config.DRADeviceConfig{ResourceCountName: "nvidia.com/gpu", RequestName: "gpu"},
+	}
+	applied := &vcv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"},
+		Spec: vcv1alpha1.JobSpec{Tasks: []vcv1alpha1.TaskSpec{{
+			Name: "t",
+			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name:      "c",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")}},
+			}}}},
+		}}},
+	}
+	created := applied.DeepCopy()
+	_, _, err := a.convertJob(context.Background(), created)
+	require.NoError(t, err)
+
+	keptClaims := created.DeepCopy()
+	keptClaims.Spec.Tasks[0].Template.Spec.Containers[0].Resources.Limits = corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")}
+	for name, job := range map[string]*vcv1alpha1.Job{"claims lost by the merge patch": applied.DeepCopy(), "claims kept": keptClaims} {
+		_, _, err := a.convertJob(context.Background(), job)
+		require.NoError(t, err, name)
+		assert.Equal(t, created.Spec, job.Spec, "%s: the update must end up as the created job", name)
+	}
+	templates := &resourceapi.ResourceClaimTemplateList{}
+	require.NoError(t, fakeClient.List(context.Background(), templates))
+	assert.Len(t, templates.Items, 1)
 }
 
 // A failed request rolls back only the templates it created, not one it reused
