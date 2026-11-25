@@ -50,7 +50,15 @@ amdReferenceComputeUnits: 0
 # taking them all. Needs amd-dra-driver 0.5.0 or newer.
 amdComputeSharing: false
 deviceVendors:
-  - nvidia  # nvidia | hygon | amd | ascend
+  - nvidia  # nvidia | hygon | amd | enflame | ascend
+
+# Enflame GCU parameters (webhook when deviceVendors contains enflame).
+# Driver and DeviceClass come from enflame-dra-driver (gcu.enflame.com).
+gcuResourceName: "enflame.com/gcu"
+gcuResourceMem: "enflame.com/gcu-memory"
+gcuResourceCores: "enflame.com/gcu-core"
+gcuDeviceClassName: gcu.enflame.com
+gcuDraDriverName: gcu.enflame.com
 
 # Ascend NPU parameters (webhook when deviceVendors contains ascend).
 # Device list matches HAMi vnpus.configs (commonWord + resource names).
@@ -104,10 +112,6 @@ metaxResourceName: "metax-tech.com/sgpu"
 metaxResourceCore: "metax-tech.com/vcore"
 metaxResourceMem: "metax-tech.com/vmemory"
 metaxsGPUTopologyAware: "false"
-
-# Enflame VGCU Parameters
-enflameResourceNameVGCU: "enflame.com/vgcu"
-enflameResourceNameVGCUPercentage: "enflame.com/vgcu-percentage"
 
 # Kunlun XPU Parameters
 kunlunResourceName: "kunlunxin.com/xpu"
@@ -340,6 +344,13 @@ drivers:
     enabled: false
     # Override DeviceClass/driver name in webhook config only.
     # Leave empty to use hcuDeviceClassName / hcuDraDriverName.
+    deviceClassName: ""
+    driverName: ""
+  enflame:
+    # Reserved; no Enflame driver template in this chart. Deploy enflame-dra-driver separately.
+    enabled: false
+    # Override DeviceClass/driver name in webhook config only.
+    # Leave empty to use gcuDeviceClassName / gcuDraDriverName.
     deviceClassName: ""
     driverName: ""
   ascend:

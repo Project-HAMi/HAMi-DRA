@@ -29,8 +29,8 @@ func TestDeviceVendorsFlag(t *testing.T) {
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	opts.AddFlags(flags)
 
-	require.NoError(t, flags.Parse([]string{"--device-vendors=nvidia,hygon,ascend"}))
-	assert.Equal(t, []string{"nvidia", "hygon", "ascend"}, opts.DeviceVendors)
+	require.NoError(t, flags.Parse([]string{"--device-vendors=nvidia,hygon,enflame,ascend"}))
+	assert.Equal(t, []string{"nvidia", "hygon", "enflame", "ascend"}, opts.DeviceVendors)
 	assert.Nil(t, flags.Lookup("device-vendor"))
 }
 

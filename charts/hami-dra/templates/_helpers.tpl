@@ -212,6 +212,22 @@ groups:
 {{- end -}}
 {{- end -}}
 
+{{- define "hami.dra.enflame.deviceClassName" -}}
+{{- if and .Values.drivers.enflame .Values.drivers.enflame.deviceClassName -}}
+{{- .Values.drivers.enflame.deviceClassName -}}
+{{- else -}}
+{{- .Values.gcuDeviceClassName -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hami.dra.enflame.driverName" -}}
+{{- if and .Values.drivers.enflame .Values.drivers.enflame.driverName -}}
+{{- .Values.drivers.enflame.driverName -}}
+{{- else -}}
+{{- .Values.gcuDraDriverName -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "hami.dra.ascend.deviceClassName" -}}
 {{- if .Values.drivers.ascend.deviceClassName -}}
 {{- .Values.drivers.ascend.deviceClassName -}}

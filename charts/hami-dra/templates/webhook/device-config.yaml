@@ -247,6 +247,13 @@ data:
       requestName: gpu
       referenceComputeUnits: {{ .Values.amdReferenceComputeUnits }}
       computeSharing: {{ .Values.amdComputeSharing }}
+    enflame:
+      resourceCountName: {{ .Values.gcuResourceName }}
+      resourceMemoryName: {{ .Values.gcuResourceMem }}
+      resourceCoreName: {{ .Values.gcuResourceCores | quote }}
+      deviceClassName: {{ include "hami.dra.enflame.deviceClassName" . }}
+      draDriverName: {{ include "hami.dra.enflame.driverName" . }}
+      requestName: gcu
     ascend:
       deviceClassName: {{ include "hami.dra.ascend.deviceClassName" . }}
       draDriverName: {{ include "hami.dra.ascend.driverName" . }}
@@ -276,10 +283,6 @@ data:
       resourceVMemoryName: {{ .Values.metaxResourceMem }}
       resourceVCoreName: {{ .Values.metaxResourceCore }}
       sgpuTopologyAware: {{ .Values.metaxsGPUTopologyAware }}
-    enflame:
-      resourceNameGCU: "enflame.com/gcu"
-      resourceNameVGCU: {{ .Values.enflameResourceNameVGCU }}
-      resourceNameVGCUPercentage: {{ .Values.enflameResourceNameVGCUPercentage }}
     mthreads:
       resourceCountName: "mthreads.com/vgpu"
       resourceMemoryName: "mthreads.com/sgpu-memory"

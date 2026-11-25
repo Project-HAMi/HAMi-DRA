@@ -92,11 +92,12 @@ const (
 type Config struct {
 	Vendors []string `yaml:"vendors"`
 	// LegacyVendor is retained only so removed configurations fail with a useful error.
-	LegacyVendor string       `yaml:"vendor"`
-	Nvidia       NvidiaConfig `yaml:"nvidia"`
-	Hygon        HygonConfig  `yaml:"hygon"`
-	Amd          AmdConfig    `yaml:"amd"`
-	Ascend       AscendConfig `yaml:"ascend"`
+	LegacyVendor string        `yaml:"vendor"`
+	Nvidia       NvidiaConfig  `yaml:"nvidia"`
+	Hygon        HygonConfig   `yaml:"hygon"`
+	Amd          AmdConfig     `yaml:"amd"`
+	Enflame      EnflameConfig `yaml:"enflame"`
+	Ascend       AscendConfig  `yaml:"ascend"`
 }
 
 // AmdConfig holds GPU DRA settings for k8s-gpu-dra-driver (gpu.amd.com).
@@ -137,6 +138,21 @@ type HygonConfig struct {
 
 	// ReferenceComputeUnits converts hygon.com/hcucores (percentage) to absolute cores for DRA.
 	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
+}
+
+// EnflameConfig holds GCU DRA settings for enflame-dra-driver (gcu.enflame.com).
+type EnflameConfig struct {
+	ResourceCountName  string `yaml:"resourceCountName"`
+	ResourceMemoryName string `yaml:"resourceMemoryName"`
+	ResourceCoreName   string `yaml:"resourceCoreName"`
+	DeviceClassName    string `yaml:"deviceClassName"`
+	DraDriverName      string `yaml:"draDriverName"`
+	RequestName        string `yaml:"requestName"`
+
+	UseUUIDAnnotation   string `yaml:"useUUIDAnnotation"`
+	NoUseUUIDAnnotation string `yaml:"noUseUUIDAnnotation"`
+	UseTypeAnnotation   string `yaml:"useTypeAnnotation"`
+	NoUseTypeAnnotation string `yaml:"noUseTypeAnnotation"`
 }
 
 // AscendConfig holds NPU DRA settings for ascend-dra-driver (ascend.project-hami.io).
