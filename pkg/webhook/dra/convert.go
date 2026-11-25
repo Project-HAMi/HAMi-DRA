@@ -40,17 +40,13 @@ func (a *MutatingAdmission) CoreCapacity(ctx context.Context, cfg *config.DRADev
 	return coreCfg.ConvertCores(cores)
 }
 
-// CompleteClaimSpec adds the selectors of the device annotations and, when
-// memoryPercentage is set, sizes the request by the published device memory.
+// CompleteClaimSpec adds the selectors of the device annotations, the 0-core
+// request of compute sharing and, when memoryPercentage is set, sizes the
+// request by the published device memory.
 func (a *MutatingAdmission) CompleteClaimSpec(ctx context.Context, spec *resourceapi.ResourceClaimSpec, annotations map[string]string, cfg *config.DRADeviceConfig, memoryPercentage *resource.Quantity) error {
 	claim := &resourceapi.ResourceClaim{Spec: *spec}
-	if err := a.addAnnotationSelectors(claim, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: annotations}}, cfg); err != nil {
+	if err := a.completeClaim(ctx, claim, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: annotations}}, cfg, memoryPercentage); err != nil {
 		return err
-	}
-	if memoryPercentage != nil {
-		if err := a.requestMemoryPercentage(ctx, claim, cfg, *memoryPercentage); err != nil {
-			return err
-		}
 	}
 	*spec = claim.Spec
 	return nil

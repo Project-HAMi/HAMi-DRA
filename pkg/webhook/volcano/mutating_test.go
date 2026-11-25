@@ -413,6 +413,73 @@ func TestHandleTaskUsesConfiguredCoreCapacityName(t *testing.T) {
 	assert.NotContains(t, caps, resourceapi.QualifiedName("cores"))
 }
 
+func TestHandleTaskComputeSharing(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: true}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	gpu := func(name string, minCU int64) *resourceapi.ResourceSlice {
+		typ, uuid := "amdgpu", "GPU-"+name
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: name},
+			Devices: []resourceapi.Device{{
+				Name:       "gpu-0",
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": {StringValue: &typ}, "uuid": {StringValue: &uuid}},
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"computeUnits": {
+					Value:         resource.MustParse("32"),
+					RequestPolicy: &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(minCU, resource.DecimalSI)}},
+				}},
+			}},
+		}}
+	}
+	slice := func(annotations map[string]string) *vcv1alpha1.TaskSpec {
+		return &vcv1alpha1.TaskSpec{Name: "t", Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{Annotations: annotations},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				{Name: "slice", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					"amd.com/gpu": resource.MustParse("1"), "amd.com/gpumem": resource.MustParse("2000"),
+				}}},
+			}},
+		}}
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "default"}}
+	// As on the Pod path, a driver that rounds 0 CUs up, or none published yet,
+	// rejects the job; only GPUs the task's annotations allow count.
+	run := func(annotations map[string]string, objs ...client.Object) error {
+		_, _, err := (&MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).Build(), DeviceConfig: cfgs[0]}).handleTask(context.Background(), slice(annotations), job)
+		return err
+	}
+	assert.ErrorContains(t, run(nil, gpu("old", 1)), "accept no fewer than 1 computeUnits")
+	assert.ErrorContains(t, run(nil), "compute sharing cannot be checked")
+	assert.ErrorContains(t, run(nil, gpu("old", 1), gpu("new", 0)), "accept no fewer than 1 computeUnits")
+	assert.NoError(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-new"}, gpu("old", 1), gpu("new", 0)))
+
+	admission := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(gpu("new", 0)).Build(), DeviceConfig: cfgs[0]}
+	task := &vcv1alpha1.TaskSpec{
+		Name: "t",
+		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{
+			{Name: "slice", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"amd.com/gpu": resource.MustParse("1"), "amd.com/gpumem": resource.MustParse("2000"),
+			}}},
+			{Name: "whole", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"amd.com/gpu": resource.MustParse("1"),
+			}}},
+		}}},
+	}
+	names, _, err := admission.handleTask(context.Background(), task, job)
+	require.NoError(t, err)
+	require.Len(t, names, 2)
+
+	rct := &resourceapi.ResourceClaimTemplate{}
+	require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, rct))
+	cus, ok := rct.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
+	assert.True(t, ok)
+	assert.Zero(t, cus.Value())
+	require.NoError(t, admission.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[1]}, rct))
+	assert.NotContains(t, rct.Spec.Spec.Devices.Requests[0].Exactly.Capacity.Requests, resourceapi.QualifiedName("computeUnits"))
+}
+
 // A job rejected after this webhook leaves its templates behind; resubmitting
 // it reuses them, but a same-named template of another job is not taken over.
 func TestHandleTaskReusesLeftoverTemplate(t *testing.T) {

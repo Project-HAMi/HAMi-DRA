@@ -64,6 +64,9 @@ type DRADeviceConfig struct {
 
 	// ReferenceComputeUnits converts a core percentage (hygon.com/hcucores, amd.com/gpucores) to absolute cores when > 0.
 	ReferenceComputeUnits int64
+	// ComputeSharing requests 0 cores for a memory slice without a core
+	// request, so it shares the device's compute with other slices.
+	ComputeSharing bool
 }
 
 func (c *DRADeviceConfig) EffectiveDeviceClassName() string {
@@ -161,6 +164,18 @@ func (c *DRADeviceConfig) ConvertCores(coreQty resource.Quantity) (resource.Quan
 	return coreQty, nil
 }
 
+// ShareCompute requests 0 cores for a memory slice that names no cores when
+// ComputeSharing is on, so the slice shares the device's compute instead of
+// taking all of it by the driver's default. It reports whether it did.
+func (c *DRADeviceConfig) ShareCompute(requests map[resourceapi.QualifiedName]resource.Quantity, memorySlice bool) bool {
+	name := resourceapi.QualifiedName(c.EffectiveCoreCapacityName())
+	if _, ok := requests[name]; !c.ComputeSharing || !memorySlice || ok {
+		return false
+	}
+	requests[name] = *resource.NewQuantity(0, resource.DecimalSI)
+	return true
+}
+
 func draDeviceFromNvidia(c *NvidiaConfig) *DRADeviceConfig {
 	if c == nil {
 		c = &NvidiaConfig{}
@@ -226,6 +241,7 @@ func draDeviceFromAMD(c *AmdConfig) *DRADeviceConfig {
 		NoUseTypeAnnotation:          firstNonEmpty(c.NoUseTypeAnnotation, constants.AmdNoUseTypeAnnotation),
 		TypeSubstringMatch:           true,
 		ReferenceComputeUnits:        c.ReferenceComputeUnits,
+		ComputeSharing:               c.ComputeSharing,
 	}
 }
 

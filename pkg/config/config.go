@@ -117,6 +117,9 @@ type AmdConfig struct {
 
 	// ReferenceComputeUnits converts amd.com/gpucores (percentage) to absolute computeUnits for DRA.
 	ReferenceComputeUnits int64 `yaml:"referenceComputeUnits"`
+	// ComputeSharing lets a memory slice without amd.com/gpucores share all
+	// CUs of its GPU (0 computeUnits, no CU mask) instead of taking them all.
+	ComputeSharing bool `yaml:"computeSharing"`
 }
 
 // HygonConfig holds HCU DRA settings for k8s-hcu-dra-driver (dra.hygon.com).

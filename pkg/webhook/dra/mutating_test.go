@@ -1021,6 +1021,29 @@ func TestHandleContainerAMDMemoryPercentage(t *testing.T) {
 	}
 }
 
+// While a driver republishes a pool, a GPU still listed only in an older
+// generation keeps its own memory size among the percentage alternatives.
+func TestDeviceMemorySizesKeepsOlderGenerations(t *testing.T) {
+	cfgs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	slice := func(name string, generation, mem int64) *resourceapi.ResourceSlice {
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "node", Generation: generation, ResourceSliceCount: 2},
+			Devices: []resourceapi.Device{{
+				Name:       name,
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+				Capacity:   map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{"memory": {Value: *resource.NewQuantity(mem, resource.BinarySI)}},
+			}},
+		}}
+	}
+	a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slice("gpu-a", 1, 32<<30), slice("gpu-b", 2, 64<<30)).Build()}
+	sizes, err := a.deviceMemorySizes(context.Background(), cfgs[0])
+	require.NoError(t, err)
+	assert.Equal(t, []int64{32 << 30, 64 << 30}, sizes)
+}
+
 func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
 	deviceConfigs, err := (&config.Config{}).DRADevices([]string{config.VendorAMD})
 	require.NoError(t, err)
@@ -1073,6 +1096,153 @@ func TestHandleContainerAMDDerivesReferenceComputeUnits(t *testing.T) {
 	require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
 	cus = claim.Spec.Devices.Requests[0].Exactly.Capacity.Requests["computeUnits"]
 	assert.Equal(t, int64(25), cus.Value())
+}
+
+func TestHandleContainerAMDComputeSharing(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	gpu := &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: resourceapi.ResourceSliceSpec{
+		Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: "a"},
+		Devices: []resourceapi.Device{{
+			Name:       "gpu-0",
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu")},
+			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+				"memory":       {Value: *resource.NewQuantity(16304<<20, resource.BinarySI)},
+				"computeUnits": {Value: *resource.NewQuantity(32, resource.DecimalSI)},
+			},
+		}},
+	}}
+	newAdmission := func(sharing bool, slice *resourceapi.ResourceSlice) *MutatingAdmission {
+		cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: sharing}}).DRADevices([]string{config.VendorAMD})
+		require.NoError(t, err)
+		return &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slice).Build(), DeviceConfigs: cfgs}
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"}}
+	// run converts limits and returns the capacity requests of each claim request.
+	run := func(sharing bool, limits corev1.ResourceList) []map[resourceapi.QualifiedName]resource.Quantity {
+		a := newAdmission(sharing, gpu)
+		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits}}
+		names, err := a.handleContainer(context.Background(), c, pod, nil, false)
+		require.NoError(t, err)
+		claim := &resourceapi.ResourceClaim{}
+		require.NoError(t, a.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: names[0]}, claim))
+		req := claim.Spec.Devices.Requests[0]
+		if req.Exactly != nil {
+			return []map[resourceapi.QualifiedName]resource.Quantity{req.Exactly.Capacity.Requests}
+		}
+		var out []map[resourceapi.QualifiedName]resource.Quantity
+		for _, sub := range req.FirstAvailable {
+			out = append(out, sub.Capacity.Requests)
+		}
+		return out
+	}
+	limits := func(kv ...string) corev1.ResourceList {
+		l := corev1.ResourceList{"amd.com/gpu": resource.MustParse("1")}
+		for i := 0; i < len(kv); i += 2 {
+			l[corev1.ResourceName(kv[i])] = resource.MustParse(kv[i+1])
+		}
+		return l
+	}
+	cus := func(requests map[resourceapi.QualifiedName]resource.Quantity) (int64, bool) {
+		q, ok := requests["computeUnits"]
+		return q.Value(), ok
+	}
+
+	for _, reqs := range [][]map[resourceapi.QualifiedName]resource.Quantity{
+		run(true, limits("amd.com/gpumem", "2000")),
+		run(true, limits("amd.com/gpumem-percentage", "25")),
+	} {
+		require.NotEmpty(t, reqs)
+		for _, r := range reqs {
+			n, ok := cus(r)
+			assert.True(t, ok, "a memory slice shares compute")
+			assert.Zero(t, n)
+		}
+	}
+	n, _ := cus(run(true, limits("amd.com/gpumem", "2000", "amd.com/gpucores", "50"))[0])
+	assert.Equal(t, int64(16), n, "a core request keeps its CU mask")
+	_, ok := cus(run(true, limits())[0])
+	assert.False(t, ok, "a whole GPU stays whole")
+	_, ok = cus(run(false, limits("amd.com/gpumem", "2000"))[0])
+	assert.False(t, ok, "without the setting a memory slice takes all CUs")
+
+	// A driver that accepts no fewer than 1 CU would pin the slice to one CU.
+	oldDriver := gpu.DeepCopy()
+	cu := oldDriver.Spec.Devices[0].Capacity["computeUnits"]
+	cu.RequestPolicy = &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(1, resource.DecimalSI)}}
+	oldDriver.Spec.Devices[0].Capacity["computeUnits"] = cu
+	a := newAdmission(true, oldDriver)
+	c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits("amd.com/gpumem", "2000")}}
+	_, err := a.handleContainer(context.Background(), c, pod, nil, false)
+	assert.ErrorContains(t, err, "gpu.amd.com devices accept no fewer than 1 computeUnits")
+	claims := &resourceapi.ResourceClaimList{}
+	require.NoError(t, a.Client.List(context.Background(), claims))
+	assert.Empty(t, claims.Items, "a rejected conversion must not leave a claim behind")
+	c = &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: limits("amd.com/gpumem", "2000", "amd.com/gpucores", "50")}}
+	_, err = a.handleContainer(context.Background(), c, pod, nil, false)
+	assert.NoError(t, err, "a core request does not depend on compute sharing")
+}
+
+// Only GPUs the claim can get count for the compute sharing check: an old
+// driver elsewhere, or a superseded generation of a pool, must not reject it.
+func TestCheckComputeSharingSelectableDevices(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	cfgs, err := (&config.Config{Amd: config.AmdConfig{ComputeSharing: true}}).DRADevices([]string{config.VendorAMD})
+	require.NoError(t, err)
+	gpu := func(pool string, generation int64, uuid string, minCU int64) *resourceapi.ResourceSlice {
+		cu := resourceapi.DeviceCapacity{
+			Value:         *resource.NewQuantity(32, resource.DecimalSI),
+			RequestPolicy: &resourceapi.CapacityRequestPolicy{ValidRange: &resourceapi.CapacityRequestPolicyRange{Min: resource.NewQuantity(minCU, resource.DecimalSI)}},
+		}
+		return &resourceapi.ResourceSlice{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%d", pool, generation)}, Spec: resourceapi.ResourceSliceSpec{
+			Driver: "gpu.amd.com", Pool: resourceapi.ResourcePool{Name: pool, Generation: generation},
+			Devices: []resourceapi.Device{{
+				Name:       "gpu-0",
+				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{"type": amdStr("amdgpu"), "uuid": amdStr(uuid)},
+				Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+					"memory":       {Value: *resource.NewQuantity(16304<<20, resource.BinarySI)},
+					"computeUnits": cu,
+				},
+			}},
+		}}
+	}
+	run := func(annotations map[string]string, slices ...client.Object) error {
+		a := &MutatingAdmission{Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(slices...).Build(), DeviceConfigs: cfgs}
+		c := &corev1.Container{Name: "c", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+			"amd.com/gpu":    resource.MustParse("1"),
+			"amd.com/gpumem": resource.MustParse("2000"),
+		}}}
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default", Annotations: annotations}}
+		_, err := a.handleContainer(context.Background(), c, pod, nil, false)
+		return err
+	}
+	const rejected = "accept no fewer than 1 computeUnits"
+
+	oldNode, newNode := gpu("old", 1, "GPU-old", 1), gpu("new", 1, "GPU-new", 0)
+	assert.ErrorContains(t, run(nil, oldNode, newNode), rejected, "any GPU the claim can get may round the request up")
+	assert.NoError(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-new"}, oldNode, newNode))
+	assert.NoError(t, run(map[string]string{cfgs[0].NoUseUUIDAnnotation: "GPU-old"}, oldNode, newNode))
+	assert.ErrorContains(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-old"}, oldNode, newNode), rejected)
+
+	assert.NoError(t, run(nil, gpu("a", 1, "GPU-a", 1), gpu("a", 2, "GPU-a", 0)), "a superseded generation does not count")
+	assert.ErrorContains(t, run(nil, gpu("a", 1, "GPU-a", 0), gpu("a", 2, "GPU-a", 1)), rejected)
+
+	assert.ErrorContains(t, run(nil), "no gpu.amd.com devices the claim can get are published", "a GPU published later may round the request up")
+	assert.ErrorContains(t, run(map[string]string{cfgs[0].UseUUIDAnnotation: "GPU-none"}, newNode), "no gpu.amd.com devices the claim can get are published")
+
+	values := func(vs ...int64) client.Object {
+		s := gpu("v", 1, "GPU-v", 0)
+		cu := s.Spec.Devices[0].Capacity["computeUnits"]
+		cu.RequestPolicy = &resourceapi.CapacityRequestPolicy{}
+		for _, v := range vs {
+			cu.RequestPolicy.ValidValues = append(cu.RequestPolicy.ValidValues, *resource.NewQuantity(v, resource.DecimalSI))
+		}
+		s.Spec.Devices[0].Capacity["computeUnits"] = cu
+		return s
+	}
+	assert.ErrorContains(t, run(nil, values(32, 1)), rejected, "valid values without 0 round the request up")
+	assert.NoError(t, run(nil, values(32, 0)))
 }
 
 // A pod rejected after this webhook leaves its claim behind; admitting the

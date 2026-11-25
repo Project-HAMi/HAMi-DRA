@@ -246,6 +246,7 @@ data:
       draDriverName: {{ .Values.amdDraDriverName }}
       requestName: gpu
       referenceComputeUnits: {{ .Values.amdReferenceComputeUnits }}
+      computeSharing: {{ .Values.amdComputeSharing }}
     enflame:
       resourceCountName: {{ .Values.gcuResourceName }}
       resourceMemoryName: {{ .Values.gcuResourceMem }}
