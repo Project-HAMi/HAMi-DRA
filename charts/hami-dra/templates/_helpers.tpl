@@ -213,7 +213,7 @@ groups:
 {{- end -}}
 
 {{- define "hami.dra.enflame.deviceClassName" -}}
-{{- if .Values.drivers.enflame.deviceClassName -}}
+{{- if and .Values.drivers.enflame .Values.drivers.enflame.deviceClassName -}}
 {{- .Values.drivers.enflame.deviceClassName -}}
 {{- else -}}
 {{- .Values.gcuDeviceClassName -}}
@@ -221,7 +221,7 @@ groups:
 {{- end -}}
 
 {{- define "hami.dra.enflame.driverName" -}}
-{{- if .Values.drivers.enflame.driverName -}}
+{{- if and .Values.drivers.enflame .Values.drivers.enflame.driverName -}}
 {{- .Values.drivers.enflame.driverName -}}
 {{- else -}}
 {{- .Values.gcuDraDriverName -}}

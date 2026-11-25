@@ -2,8 +2,7 @@
 
 Deploy HAMi-DRA webhook (and optional monitor) for Enflame GCU clusters that
 already run
-[enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver)
-(repository is not public yet).
+[enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver).
 
 This chart deploys the mutating/validating webhook, TLS certificates, and
 (when enabled) `hami-dra-monitor`. The GCU DRA driver and `DeviceClass`
@@ -12,18 +11,26 @@ This chart deploys the mutating/validating webhook, TLS certificates, and
 ## Prerequisites
 
 1. Kubernetes with DRA and the `DRAConsumableCapacity` feature gate (same bar as the main chart / AMD path).
-2. [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) deployed; `DeviceClass` `gcu.enflame.com` must exist. The driver repository is not public yet.
+2. [enflame-dra-driver](https://github.com/Project-HAMi/enflame-dra-driver) deployed; `DeviceClass` `gcu.enflame.com` must exist.
 3. [cert-manager](https://cert-manager.io/docs/installation/) installed (or provide your own webhook certs; see the README).
-4. `hami-dra-webhook` (and `hami-dra-monitor` if enabled) images reachable from the node (override `webhook.image.*` / `monitor.image.*` for local tags).
+4. `hami-dra-webhook` (and `hami-dra-monitor` if enabled) images built from this revision. Chart defaults still point at a pre-Enflame release tag, so override `webhook.image.*` / `monitor.image.*` with images from this checkout.
 
 ## Install
 
-From a local checkout (preferred; matches `enflame-values.yaml`):
+Build images from this revision first (chart defaults are still `v0.2.4` and do not include Enflame conversion):
+
+```bash
+make docker-build-webhook docker-build-monitor
+```
+
+Then install from the local checkout with those image tags:
 
 ```bash
 helm install hami-dra ./charts/hami-dra \
   -n hami-system --create-namespace \
-  -f ./charts/hami-dra/enflame-values.yaml
+  -f ./charts/hami-dra/enflame-values.yaml \
+  --set webhook.image.tag=latest \
+  --set monitor.image.tag=latest
 ```
 
 Equivalent `--set` form:
@@ -34,11 +41,14 @@ helm install hami-dra ./charts/hami-dra \
   --set 'deviceVendors={enflame}' \
   --set drivers.nvidia.enabled=false \
   --set monitor.enabled=true \
-  --set certs.certManager.enabled=true
+  --set certs.certManager.enabled=true \
+  --set webhook.image.tag=latest \
+  --set monitor.image.tag=latest
 ```
 
 Published Helm chart install is not available yet for Enflame (use a local
-checkout until a release that includes this vendor ships).
+checkout and images built from this revision until a release that includes this
+vendor ships).
 
 ## Important values
 
@@ -69,8 +79,8 @@ a whole-card-only RequestPolicy (`Default` / sole `ValidValues` = full card).
   driver publishes as capacity `cores`); the webhook leaves those values as-is
   and does not use `referenceComputeUnits` the way Hygon/AMD percentage cores
   do. Optional `enflame.com/gcu-memory` is MiB and is converted to bytes like
-  other vendors. If those optional resources are set to anything other than a
-  full card, the claim will not allocate under the current RequestPolicy.
+  other vendors. Partial optional requests round up to a full card and still
+  allocate; Kubernetes rejects only requests that exceed all valid values.
 
 The label `hami.io/skip-dra: "true"` keeps a Pod out of DRA conversion (same as
 other vendors). `webhook.config.resourceClaimTemplate` from the main chart also
@@ -78,7 +88,7 @@ applies when you need ResourceClaimTemplate instead of ResourceClaim.
 
 ### UUID selection
 
-HAMi Enflame UUID annotations:
+Use a UUID advertised by your own driver when you need a specific GCU:
 
 | Annotation | Effect |
 |------------|--------|

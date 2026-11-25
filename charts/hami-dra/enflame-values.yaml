@@ -12,8 +12,8 @@
 # This overlay converts HAMi-style enflame.com/gcu (and optional gcu-memory /
 # gcu-core) requests into ResourceClaims for gcu.enflame.com.
 # enflame-dra-driver is whole-card only: prefer count-only (enflame.com/gcu)
-# requests; optional memory/core must match a full card or the claim will not
-# allocate.
+# requests; optional memory/core below a full card round up and still allocate
+# a whole card.
 
 deviceVendors:
   - enflame
