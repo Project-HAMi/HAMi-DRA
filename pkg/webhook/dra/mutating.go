@@ -150,7 +150,7 @@ func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfi
 			continue
 		}
 		for _, cfg := range cfgs {
-			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName, cfg.ResourceMemoryPercentageName} {
+			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName, cfg.ResourceMemoryPercentageName, cfg.ResourcePriorityName} {
 				if name == "" {
 					continue
 				}
@@ -269,6 +269,10 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 		a.removeResource(container, countResourceName)
+		if err := ApplyTaskPriority(container, cfg); err != nil {
+			cleanup()
+			return nil, err
+		}
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
 			coreCfg, err := a.withReferenceComputeUnits(ctx, cfg)
@@ -319,6 +323,36 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		rcNames = append(rcNames, rcName)
 	}
 	return rcNames, nil
+}
+
+// taskPriorityEnv is read by HAMi-core: 0 is high priority, 1 is low.
+const taskPriorityEnv = "CUDA_TASK_PRIORITY"
+
+// ApplyTaskPriority turns the priority resource into HAMi-core's
+// CUDA_TASK_PRIORITY, as HAMi does, for a container that gets a device. No
+// node advertises the resource in DRA mode, so it is removed. A value the
+// user already set in the env wins, so reapplying the pod spec is stable.
+func ApplyTaskPriority(container *corev1.Container, cfg *config.DRADeviceConfig) error {
+	name := corev1.ResourceName(cfg.ResourcePriorityName)
+	if name == "" {
+		return nil
+	}
+	q, ok := container.Resources.Limits[name]
+	if ok && (q.Sign() < 0 || q.MilliValue()%1000 != 0) {
+		return fmt.Errorf("%s must be a non-negative whole number, got %s", name, q.String())
+	}
+	delete(container.Resources.Limits, name)
+	delete(container.Resources.Requests, name)
+	if !ok {
+		return nil
+	}
+	for _, env := range container.Env {
+		if env.Name == taskPriorityEnv {
+			return nil
+		}
+	}
+	container.Env = append(container.Env, corev1.EnvVar{Name: taskPriorityEnv, Value: fmt.Sprint(q.Value())})
+	return nil
 }
 
 // dns1123LabelMaxLength is the Kubernetes DNS-1123 label limit, which applies

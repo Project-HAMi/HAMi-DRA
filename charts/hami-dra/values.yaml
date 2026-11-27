@@ -15,6 +15,8 @@ resourceName: "nvidia.com/gpu"
 resourceMem: "nvidia.com/gpumem"
 resourceMemPercentage: "nvidia.com/gpumem-percentage"
 resourceCores: "nvidia.com/gpucores"
+# Passed to HAMi-core as CUDA_TASK_PRIORITY. It only takes effect where
+# HAMi's vGPUmonitor runs, which HAMi-DRA does not deploy.
 resourcePriority: "nvidia.com/priority"
 
 # MLU Parameters

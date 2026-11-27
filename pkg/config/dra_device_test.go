@@ -198,6 +198,12 @@ func TestDRADevicesValidation(t *testing.T) {
 			vendors: []string{VendorNvidia, VendorHygon},
 			message: "configured by both",
 		},
+		{
+			name:    "priority collision",
+			config:  Config{Nvidia: NvidiaConfig{ResourcePriority: "nvidia.com/gpu"}},
+			vendors: []string{VendorNvidia},
+			message: "configured by both",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

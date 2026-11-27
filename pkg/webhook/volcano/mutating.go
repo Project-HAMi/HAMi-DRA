@@ -238,6 +238,9 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 		a.removeResource(container, countResourceName)
+		if err := dra.ApplyTaskPriority(container, cfg); err != nil {
+			return rctNames, created, err
+		}
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
 			converted, err := a.podPath().CoreCapacity(ctx, cfg, coreQty)

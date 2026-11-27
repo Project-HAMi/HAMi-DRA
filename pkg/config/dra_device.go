@@ -44,10 +44,14 @@ type DRADeviceConfig struct {
 	// ResourceMemoryPercentageName requests a share of each device's memory
 	// in percent; empty when the vendor does not support it.
 	ResourceMemoryPercentageName string
-	DeviceClassName              string
-	DraDriverName                string
-	RequestName                  string
-	DeviceType                   string
+	// ResourcePriorityName sets HAMi-core's CUDA_TASK_PRIORITY for the
+	// container; empty when the vendor does not support it. Only HAMi's
+	// vGPUmonitor acts on the priority.
+	ResourcePriorityName string
+	DeviceClassName      string
+	DraDriverName        string
+	RequestName          string
+	DeviceType           string
 	// CoreCapacityName is the capacity the driver publishes for compute units;
 	// empty means "cores".
 	CoreCapacityName string
@@ -186,6 +190,7 @@ func draDeviceFromNvidia(c *NvidiaConfig) *DRADeviceConfig {
 		ResourceMemoryName:           firstNonEmpty(c.ResourceMemoryName, "nvidia.com/gpumem"),
 		ResourceCoreName:             firstNonEmpty(c.ResourceCoreName, "nvidia.com/gpucores"),
 		ResourceMemoryPercentageName: c.ResourceMemoryPercentageName,
+		ResourcePriorityName:         c.ResourcePriority,
 		DeviceClassName:              c.DeviceClassName,
 		DraDriverName:                c.DraDriverName,
 		RequestName:                  "gpu",
@@ -414,7 +419,7 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			if cfg.ResourceCountName == "" {
 				return nil, fmt.Errorf("device vendor %q has an empty count resource name", vendor)
 			}
-			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName, cfg.ResourceMemoryPercentageName} {
+			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName, cfg.ResourceMemoryPercentageName, cfg.ResourcePriorityName} {
 				if resourceName == "" {
 					continue
 				}

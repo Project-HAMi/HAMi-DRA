@@ -1301,3 +1301,79 @@ func TestHandleDoesNotReuseClaimInUseOrDifferent(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleContainerTaskPriority(t *testing.T) {
+	deviceConfigs, err := (&config.Config{Nvidia: config.NvidiaConfig{ResourcePriority: "nvidia.com/priority"}}).DRADevices([]string{config.VendorNvidia})
+	require.NoError(t, err)
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client:        fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfigs: deviceConfigs,
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "prio", Namespace: "default"}}
+
+	for _, tc := range []struct {
+		name string
+		env  []corev1.EnvVar
+		want string
+	}{
+		{name: "no env", want: "1"},
+		{name: "user env", env: []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "0"}}, want: "0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			container := &corev1.Container{
+				Name: "workload-" + strings.ReplaceAll(tc.name, " ", "-"),
+				Env:  tc.env,
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					"nvidia.com/gpu":      resource.MustParse("1"),
+					"nvidia.com/priority": resource.MustParse("1"),
+				}},
+			}
+			_, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+			require.NoError(t, err)
+			assert.Empty(t, container.Resources.Limits)
+			assert.Equal(t, []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: tc.want}}, container.Env)
+		})
+	}
+
+	for _, bad := range []string{"-1", "500m"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			container := &corev1.Container{
+				Name: "bad",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					"nvidia.com/gpu":      resource.MustParse("1"),
+					"nvidia.com/priority": resource.MustParse(bad),
+				}},
+			}
+			_, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+			require.ErrorContains(t, err, "nvidia.com/priority must be a non-negative whole number")
+		})
+	}
+
+	t.Run("no device", func(t *testing.T) {
+		container := &corev1.Container{
+			Name:      "cpu-only",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/priority": resource.MustParse("1")}},
+		}
+		names, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+		require.NoError(t, err)
+		assert.Empty(t, names)
+		assert.Contains(t, container.Resources.Limits, corev1.ResourceName("nvidia.com/priority"))
+		assert.Empty(t, container.Env)
+	})
+}
+
+func TestStripConvertedRemovesPriority(t *testing.T) {
+	deviceConfigs, err := (&config.Config{Nvidia: config.NvidiaConfig{ResourcePriority: "nvidia.com/priority"}}).DRADevices([]string{config.VendorNvidia})
+	require.NoError(t, err)
+	containers := []corev1.Container{{
+		Name: "workload",
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"nvidia.com/priority": resource.MustParse("1")},
+			Claims: []corev1.ResourceClaim{{Name: "gpu"}},
+		},
+	}}
+	assert.True(t, stripConverted(containers, deviceConfigs))
+	assert.Empty(t, containers[0].Resources.Limits)
+}

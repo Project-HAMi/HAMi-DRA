@@ -651,3 +651,34 @@ func TestHandleRollbackKeepsReusedTemplate(t *testing.T) {
 	err = fakeClient.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "default-j-t1-c"}, &resourceapi.ResourceClaimTemplate{})
 	assert.NoError(t, err, "a reused template must survive the rollback")
 }
+
+func TestHandleTaskSetsTaskPriority(t *testing.T) {
+	sch := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(sch))
+	require.NoError(t, vcv1alpha1.AddToScheme(sch))
+	admission := &MutatingAdmission{
+		Client: fake.NewClientBuilder().WithScheme(sch).Build(),
+		DeviceConfig: &config.DRADeviceConfig{
+			ResourceCountName:    "nvidia.com/gpu",
+			ResourcePriorityName: "nvidia.com/priority",
+			RequestName:          "gpu",
+		},
+	}
+	task := &vcv1alpha1.TaskSpec{
+		Name: "prio",
+		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "gpu",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				"nvidia.com/gpu":      resource.MustParse("1"),
+				"nvidia.com/priority": resource.MustParse("1"),
+			}},
+		}}}},
+	}
+	job := &vcv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "job", Namespace: "default"}}
+
+	_, _, err := admission.handleTask(context.Background(), task, job)
+	require.NoError(t, err)
+	container := task.Template.Spec.Containers[0]
+	assert.Empty(t, container.Resources.Limits)
+	assert.Equal(t, []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "1"}}, container.Env)
+}
