@@ -215,6 +215,7 @@ func jobOwner(job *vcv1alpha1.Job) string {
 
 func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string, annotations map[string]string) (rctNames, created []string, err error) {
 	for _, cfg := range a.configs() {
+		dra.ApplyTaskPriority(container, cfg)
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
 		// As with the device plugin, a zero count asks for no device. A claim

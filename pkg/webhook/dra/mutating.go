@@ -150,7 +150,7 @@ func stripConverted(containers []corev1.Container, cfgs []*config.DRADeviceConfi
 			continue
 		}
 		for _, cfg := range cfgs {
-			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName, cfg.ResourceMemoryPercentageName} {
+			for _, name := range []string{cfg.ResourceCountName, cfg.ResourceCoreName, cfg.ResourceMemoryName, cfg.ResourceMemoryPercentageName, cfg.ResourcePriorityName} {
 				if name == "" {
 					continue
 				}
@@ -250,6 +250,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	}
 
 	for _, cfg := range a.configs() {
+		ApplyTaskPriority(container, cfg)
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
 		// As with the device plugin, a zero count asks for no device. A claim
@@ -319,6 +320,33 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		rcNames = append(rcNames, rcName)
 	}
 	return rcNames, nil
+}
+
+// taskPriorityEnv is read by HAMi-core: 0 is high priority, 1 is low.
+const taskPriorityEnv = "CUDA_TASK_PRIORITY"
+
+// ApplyTaskPriority turns the priority resource into HAMi-core's
+// CUDA_TASK_PRIORITY, as HAMi does. No node advertises the resource in DRA
+// mode, so it is always removed.
+func ApplyTaskPriority(container *corev1.Container, cfg *config.DRADeviceConfig) {
+	name := corev1.ResourceName(cfg.ResourcePriorityName)
+	if name == "" {
+		return
+	}
+	q, ok := container.Resources.Limits[name]
+	delete(container.Resources.Limits, name)
+	delete(container.Resources.Requests, name)
+	if !ok {
+		return
+	}
+	value := fmt.Sprint(q.Value())
+	for i := range container.Env {
+		if container.Env[i].Name == taskPriorityEnv {
+			container.Env[i] = corev1.EnvVar{Name: taskPriorityEnv, Value: value}
+			return
+		}
+	}
+	container.Env = append(container.Env, corev1.EnvVar{Name: taskPriorityEnv, Value: value})
 }
 
 // dns1123LabelMaxLength is the Kubernetes DNS-1123 label limit, which applies
