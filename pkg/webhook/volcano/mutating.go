@@ -215,7 +215,6 @@ func jobOwner(job *vcv1alpha1.Job) string {
 
 func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, container *corev1.Container, namespace, name, owner string, annotations map[string]string) (rctNames, created []string, err error) {
 	for _, cfg := range a.configs() {
-		dra.ApplyTaskPriority(container, cfg)
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
 		// As with the device plugin, a zero count asks for no device. A claim
@@ -239,6 +238,7 @@ func (a *MutatingAdmission) handleContainerTemplate(ctx context.Context, contain
 		resourceclaimtemplate.Spec.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 		a.removeResource(container, countResourceName)
+		dra.ApplyTaskPriority(container, cfg)
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
 			converted, err := a.podPath().CoreCapacity(ctx, cfg, coreQty)

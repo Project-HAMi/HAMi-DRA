@@ -418,7 +418,7 @@ func (c *Config) DRADevices(vendors []string) ([]*DRADeviceConfig, error) {
 			if cfg.ResourceCountName == "" {
 				return nil, fmt.Errorf("device vendor %q has an empty count resource name", vendor)
 			}
-			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName, cfg.ResourceMemoryPercentageName} {
+			for _, resourceName := range []string{cfg.ResourceCountName, cfg.ResourceMemoryName, cfg.ResourceCoreName, cfg.ResourceMemoryPercentageName, cfg.ResourcePriorityName} {
 				if resourceName == "" {
 					continue
 				}

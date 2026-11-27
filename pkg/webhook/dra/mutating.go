@@ -250,7 +250,6 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 	}
 
 	for _, cfg := range a.configs() {
-		ApplyTaskPriority(container, cfg)
 		countResourceName := corev1.ResourceName(cfg.ResourceCountName)
 		countQty, ok := container.Resources.Limits[countResourceName]
 		// As with the device plugin, a zero count asks for no device. A claim
@@ -270,6 +269,7 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 		resourceclaim.Spec.Devices.Requests[0].Exactly.Count = countQty.Value()
 
 		a.removeResource(container, countResourceName)
+		ApplyTaskPriority(container, cfg)
 
 		if coreQty, ok := container.Resources.Limits[corev1.ResourceName(cfg.ResourceCoreName)]; ok {
 			coreCfg, err := a.withReferenceComputeUnits(ctx, cfg)
@@ -326,8 +326,8 @@ func (a *MutatingAdmission) handleContainer(ctx context.Context, container *core
 const taskPriorityEnv = "CUDA_TASK_PRIORITY"
 
 // ApplyTaskPriority turns the priority resource into HAMi-core's
-// CUDA_TASK_PRIORITY, as HAMi does. No node advertises the resource in DRA
-// mode, so it is always removed.
+// CUDA_TASK_PRIORITY, as HAMi does, for a container that gets a device. No
+// node advertises the resource in DRA mode, so it is removed.
 func ApplyTaskPriority(container *corev1.Container, cfg *config.DRADeviceConfig) {
 	name := corev1.ResourceName(cfg.ResourcePriorityName)
 	if name == "" {

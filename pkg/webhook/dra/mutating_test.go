@@ -1335,6 +1335,18 @@ func TestHandleContainerTaskPriority(t *testing.T) {
 			assert.Equal(t, []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "1"}}, container.Env)
 		})
 	}
+
+	t.Run("no device", func(t *testing.T) {
+		container := &corev1.Container{
+			Name:      "cpu-only",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/priority": resource.MustParse("1")}},
+		}
+		names, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+		require.NoError(t, err)
+		assert.Empty(t, names)
+		assert.Contains(t, container.Resources.Limits, corev1.ResourceName("nvidia.com/priority"))
+		assert.Empty(t, container.Env)
+	})
 }
 
 func TestStripConvertedRemovesPriority(t *testing.T) {
