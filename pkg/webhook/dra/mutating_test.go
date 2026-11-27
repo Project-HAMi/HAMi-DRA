@@ -1316,9 +1316,10 @@ func TestHandleContainerTaskPriority(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  []corev1.EnvVar
+		want string
 	}{
-		{name: "no env"},
-		{name: "stale env", env: []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "0"}}},
+		{name: "no env", want: "1"},
+		{name: "user env", env: []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "0"}}, want: "0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			container := &corev1.Container{
@@ -1332,7 +1333,21 @@ func TestHandleContainerTaskPriority(t *testing.T) {
 			_, err := admission.handleContainer(context.Background(), container, pod, nil, false)
 			require.NoError(t, err)
 			assert.Empty(t, container.Resources.Limits)
-			assert.Equal(t, []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: "1"}}, container.Env)
+			assert.Equal(t, []corev1.EnvVar{{Name: "CUDA_TASK_PRIORITY", Value: tc.want}}, container.Env)
+		})
+	}
+
+	for _, bad := range []string{"-1", "500m"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			container := &corev1.Container{
+				Name: "bad",
+				Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					"nvidia.com/gpu":      resource.MustParse("1"),
+					"nvidia.com/priority": resource.MustParse(bad),
+				}},
+			}
+			_, err := admission.handleContainer(context.Background(), container, pod, nil, false)
+			require.ErrorContains(t, err, "nvidia.com/priority must be a non-negative whole number")
 		})
 	}
 

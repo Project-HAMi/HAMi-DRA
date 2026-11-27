@@ -45,7 +45,8 @@ type DRADeviceConfig struct {
 	// in percent; empty when the vendor does not support it.
 	ResourceMemoryPercentageName string
 	// ResourcePriorityName sets HAMi-core's CUDA_TASK_PRIORITY for the
-	// container; empty when the vendor does not support it.
+	// container; empty when the vendor does not support it. Only HAMi's
+	// vGPUmonitor acts on the priority.
 	ResourcePriorityName string
 	DeviceClassName      string
 	DraDriverName        string
